@@ -161,6 +161,8 @@ const Procurement = () => {
 
   // Status filter for All Requests tab
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  // Urgency filter for Cash Manager tab
+  const [urgencyFilter, setUrgencyFilter] = useState<string>("all");
 
   // Priority options
   type PriorityLevel = "urgent" | "2-weeks" | "4-weeks";
@@ -578,9 +580,21 @@ const Procurement = () => {
   };
 
   // Group cash manager requests by IR number for collapsible view
-  const filteredCashManager = statusFilter === "all"
-    ? cashManagerRequests
-    : cashManagerRequests.filter(r => r.status.toLowerCase() === statusFilter);
+  const filteredCashManager = useMemo(() => {
+    let filtered = cashManagerRequests;
+    
+    // Apply status filter
+    if (statusFilter !== "all") {
+      filtered = filtered.filter(r => r.status.toLowerCase() === statusFilter);
+    }
+    
+    // Apply urgency filter
+    if (urgencyFilter !== "all") {
+      filtered = filtered.filter(r => r.urgency_level === urgencyFilter);
+    }
+    
+    return filtered;
+  }, [cashManagerRequests, statusFilter, urgencyFilter]);
 
   const irGroups = useMemo(() => {
     const groups = new Map<string, PartsRequest[]>();
@@ -652,6 +666,24 @@ const Procurement = () => {
     return (
       <Badge className={`${option.color} text-white`}>
         {option.label}
+      </Badge>
+    );
+  };
+
+  // Urgency badge for Cash Manager IRs
+  const getUrgencyBadge = (urgency?: string | null) => {
+    if (!urgency) return null;
+    const urgencyConfig: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
+      'urgent': { label: 'Urgent', color: 'bg-red-600 text-white', icon: <AlertTriangle className="h-3 w-3 mr-1" /> },
+      '1-week': { label: '1 Week', color: 'bg-orange-600 text-white', icon: <Clock className="h-3 w-3 mr-1" /> },
+      '2-weeks': { label: '2 Weeks', color: 'bg-blue-600 text-white', icon: <Clock className="h-3 w-3 mr-1" /> },
+    };
+    const config = urgencyConfig[urgency];
+    if (!config) return null;
+    return (
+      <Badge className={config.color}>
+        {config.icon}
+        {config.label}
       </Badge>
     );
   };
@@ -911,6 +943,211 @@ const Procurement = () => {
     });
 
     doc.save(`Procurement_Restock_Requests_${new Date().toISOString().split("T")[0]}.pdf`);
+  };
+
+  // Export Cash Manager requests to Excel
+  const exportCashManagerToExcel = () => {
+    if (filteredCashManager.length === 0) return;
+
+    const worksheetData = filteredCashManager.map((request) => {
+      const leadTime = getLeadTime(request);
+      const totalTime = getTotalProcurementTime(request);
+      const urgencyLabel = request.urgency_level === 'urgent' ? 'Urgent' 
+        : request.urgency_level === '1-week' ? '1 Week'
+        : request.urgency_level === '2-weeks' ? '2 Weeks'
+        : '-';
+      return {
+        "Part Name": request.part_name,
+        "Part Number": request.part_number || "-",
+        "Quantity": request.quantity,
+        "Unit Price": request.unit_price ? `$${request.unit_price.toFixed(2)}` : "-",
+        "Total Price": request.total_price ? `$${request.total_price.toFixed(2)}` : "-",
+        "IR Number": request.ir_number || request.sage_requisition_number || "-",
+        "Urgency": urgencyLabel,
+        "Cash Manager Ref": request.cash_manager_reference || "-",
+        "CM Approved By": request.cash_manager_approved_by || "-",
+        "CM Approval Date": request.cash_manager_approval_date ? formatDate(request.cash_manager_approval_date) : "-",
+        "Vendor": request.vendor?.vendor_name || "-",
+        "Status": request.status,
+        "Ordered Date": request.ordered_at ? formatDate(request.ordered_at) : "-",
+        "Ordered By": request.ordered_by || "-",
+        "Expected Delivery": request.expected_delivery_date || "-",
+        "Received Date": request.received_date ? formatDate(request.received_date) : "-",
+        "Received Qty": request.received_quantity ?? "-",
+        "Received By": request.received_by || "-",
+        "Lead Time": leadTime?.formatted || "-",
+        "Total Procurement Time": totalTime?.formatted || "-",
+        "Job Card": request.job_card?.job_number || "-",
+        "Source": request.job_card_id ? "Job Card" : request.inventory_id ? "Restock" : "Manual",
+        "Allocated": request.allocated_to_job_card ? "Yes" : "No",
+        "Notes": request.notes || "-",
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(worksheetData);
+    worksheet["!cols"] = [
+      { wch: 30 }, // Part Name
+      { wch: 15 }, // Part Number
+      { wch: 8 },  // Quantity
+      { wch: 12 }, // Unit Price
+      { wch: 12 }, // Total Price
+      { wch: 18 }, // IR Number
+      { wch: 12 }, // Urgency
+      { wch: 18 }, // Cash Manager Ref
+      { wch: 16 }, // CM Approved By
+      { wch: 14 }, // CM Approval Date
+      { wch: 20 }, // Vendor
+      { wch: 12 }, // Status
+      { wch: 14 }, // Ordered Date
+      { wch: 14 }, // Ordered By
+      { wch: 14 }, // Expected Delivery
+      { wch: 14 }, // Received Date
+      { wch: 12 }, // Received Qty
+      { wch: 14 }, // Received By
+      { wch: 14 }, // Lead Time
+      { wch: 18 }, // Total Procurement Time
+      { wch: 12 }, // Job Card
+      { wch: 10 }, // Source
+      { wch: 10 }, // Allocated
+      { wch: 30 }, // Notes
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Cash Manager");
+
+    // Add summary sheet
+    const summaryData = [
+      { "Metric": "Total Items", "Value": filteredCashManager.length },
+      { "Metric": "Awaiting Approval", "Value": filteredCashManager.filter(r => !r.cash_manager_approval_date).length },
+      { "Metric": "Approved", "Value": filteredCashManager.filter(r => r.cash_manager_approval_date && !r.ordered_at).length },
+      { "Metric": "Ordered", "Value": filteredCashManager.filter(r => r.ordered_at && !r.received_date).length },
+      { "Metric": "Received", "Value": filteredCashManager.filter(r => !!r.received_date).length },
+      { "Metric": "Allocated / Fulfilled", "Value": filteredCashManager.filter(r => r.allocated_to_job_card).length },
+      { "Metric": "Total Value", "Value": `$${filteredCashManager.reduce((sum, r) => sum + (r.total_price || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
+    ];
+    const summarySheet = XLSX.utils.json_to_sheet(summaryData);
+    summarySheet["!cols"] = [{ wch: 24 }, { wch: 16 }];
+    XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary");
+
+    XLSX.writeFile(workbook, `Cash_Manager_Report_${new Date().toISOString().split("T")[0]}.xlsx`);
+  };
+
+  // Export Urgent IRs to Excel (filtered)
+  const exportUrgentIRsToExcel = () => {
+    const urgentIRs = cashManagerRequests.filter(r => r.urgency_level === 'urgent');
+    if (urgentIRs.length === 0) return;
+
+    const worksheetData = urgentIRs.map((request) => {
+      const leadTime = getLeadTime(request);
+      const totalTime = getTotalProcurementTime(request);
+      return {
+        "Part Name": request.part_name,
+        "Part Number": request.part_number || "-",
+        "Quantity": request.quantity,
+        "Unit Price": request.unit_price ? `$${request.unit_price.toFixed(2)}` : "-",
+        "Total Price": request.total_price ? `$${request.total_price.toFixed(2)}` : "-",
+        "IR Number": request.ir_number || request.sage_requisition_number || "-",
+        "Urgency": "Urgent",
+        "Cash Manager Ref": request.cash_manager_reference || "-",
+        "CM Approved By": request.cash_manager_approved_by || "-",
+        "CM Approval Date": request.cash_manager_approval_date ? formatDate(request.cash_manager_approval_date) : "-",
+        "Vendor": request.vendor?.vendor_name || "-",
+        "Status": request.status,
+        "Ordered Date": request.ordered_at ? formatDate(request.ordered_at) : "-",
+        "Ordered By": request.ordered_by || "-",
+        "Expected Delivery": request.expected_delivery_date || "-",
+        "Received Date": request.received_date ? formatDate(request.received_date) : "-",
+        "Received Qty": request.received_quantity ?? "-",
+        "Received By": request.received_by || "-",
+        "Lead Time": leadTime?.formatted || "-",
+        "Total Procurement Time": totalTime?.formatted || "-",
+        "Job Card": request.job_card?.job_number || "-",
+        "Source": request.job_card_id ? "Job Card" : request.inventory_id ? "Restock" : "Manual",
+        "Allocated": request.allocated_to_job_card ? "Yes" : "No",
+        "Notes": request.notes || "-",
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(worksheetData);
+    worksheet["!cols"] = [
+      { wch: 30 }, { wch: 15 }, { wch: 8 }, { wch: 12 }, { wch: 12 },
+      { wch: 18 }, { wch: 12 }, { wch: 18 }, { wch: 16 }, { wch: 14 },
+      { wch: 20 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
+      { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 18 },
+      { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 30 },
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Urgent IRs");
+    XLSX.writeFile(workbook, `Urgent_IRs_${new Date().toISOString().split("T")[0]}.xlsx`);
+  };
+
+  // Export Cash Manager requests to PDF
+  const exportCashManagerToPDF = () => {
+    if (filteredCashManager.length === 0) return;
+
+    const doc = new jsPDF({ orientation: "landscape" });
+
+    // Title
+    doc.setFontSize(18);
+    doc.text("Cash Manager — Procurement Report", 14, 15);
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 22);
+    doc.text(`Total Items: ${filteredCashManager.length}`, 14, 27);
+
+    // Summary stats
+    const totalValue = filteredCashManager.reduce((sum, r) => sum + (r.total_price || 0), 0);
+    const awaitingApproval = filteredCashManager.filter(r => !r.cash_manager_approval_date).length;
+    const approved = filteredCashManager.filter(r => r.cash_manager_approval_date && !r.ordered_at).length;
+    const ordered = filteredCashManager.filter(r => r.ordered_at && !r.received_date).length;
+    const received = filteredCashManager.filter(r => !!r.received_date).length;
+    const allocated = filteredCashManager.filter(r => r.allocated_to_job_card).length;
+
+    doc.text(
+      `Awaiting: ${awaitingApproval}  |  Approved: ${approved}  |  Ordered: ${ordered}  |  Received: ${received}  |  Fulfilled: ${allocated}  |  Total Value: $${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      14, 32
+    );
+
+    doc.setTextColor(0);
+
+    // Main table
+    autoTable(doc, {
+      startY: 38,
+      head: [["Part Name", "IR #", "Urgency", "Qty", "Price", "Vendor", "CM Ref", "CM Date", "Status", "Ordered", "Received", "Lead Time"]],
+      body: filteredCashManager.map((r) => {
+        const leadTime = getLeadTime(r);
+        const urgencyLabel = r.urgency_level === 'urgent' ? 'Urgent' 
+          : r.urgency_level === '1-week' ? '1 Week'
+          : r.urgency_level === '2-weeks' ? '2 Weeks'
+          : '-';
+        return [
+          r.part_name,
+          r.ir_number || r.sage_requisition_number || "-",
+          urgencyLabel,
+          r.quantity,
+          r.total_price ? `$${r.total_price.toFixed(2)}` : "-",
+          r.vendor?.vendor_name || "-",
+          r.cash_manager_reference || "-",
+          r.cash_manager_approval_date ? formatDate(r.cash_manager_approval_date) : "-",
+          r.allocated_to_job_card ? "Fulfilled" : r.status,
+          r.ordered_at ? formatDate(r.ordered_at) : "-",
+          r.received_date ? formatDate(r.received_date) : "-",
+          leadTime?.formatted || "-",
+        ];
+      }),
+      styles: { fontSize: 7, cellPadding: 1.5 },
+      headStyles: { fillColor: [124, 58, 237], fontSize: 7 },
+      alternateRowStyles: { fillColor: [245, 245, 255] },
+      columnStyles: {
+        0: { cellWidth: 40 }, // Part Name
+        2: { halign: "center" }, // Qty
+        3: { halign: "right" }, // Price
+        7: { halign: "center" }, // Status
+      },
+    });
+
+    doc.save(`Cash_Manager_Report_${new Date().toISOString().split("T")[0]}.pdf`);
   };
 
   if (loadingRequests) {
@@ -1476,6 +1713,47 @@ const Procurement = () => {
                         <SelectItem value="received">Received</SelectItem>
                       </SelectContent>
                     </Select>
+                    <Select
+                      value={urgencyFilter}
+                      onValueChange={setUrgencyFilter}
+                    >
+                      <SelectTrigger className="w-[150px]">
+                        <SelectValue placeholder="Filter urgency" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Urgencies</SelectItem>
+                        <SelectItem value="urgent">Urgent</SelectItem>
+                        <SelectItem value="1-week">1 Week</SelectItem>
+                        <SelectItem value="2-weeks">2 Weeks</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm" disabled={filteredCashManager.length === 0}>
+                          <Download className="h-4 w-4 mr-2" />
+                          Export
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={exportCashManagerToExcel} disabled={filteredCashManager.length === 0}>
+                          <FileText className="h-4 w-4 mr-2" />
+                          Export to Excel
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={exportCashManagerToPDF} disabled={filteredCashManager.length === 0}>
+                          <FileDown className="h-4 w-4 mr-2" />
+                          Export to PDF
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem 
+                          onClick={exportUrgentIRsToExcel} 
+                          disabled={!cashManagerRequests.some(r => r.urgency_level === 'urgent')}
+                          className="text-red-600"
+                        >
+                          <AlertTriangle className="h-4 w-4 mr-2" />
+                          Export Urgent IRs Only
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
               </CardHeader>
@@ -1516,6 +1794,11 @@ const Procurement = () => {
                                     <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
                                       <Store className="h-3 w-3" />
                                       {request.vendor.vendor_name}
+                                    </div>
+                                  )}
+                                  {request.urgency_level && (
+                                    <div className="mt-1">
+                                      {getUrgencyBadge(request.urgency_level)}
                                     </div>
                                   )}
                                 </div>
@@ -1716,6 +1999,11 @@ const Procurement = () => {
                                       <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
                                         <Store className="h-3 w-3" />
                                         {request.vendor.vendor_name}
+                                      </div>
+                                    )}
+                                    {request.urgency_level && (
+                                      <div className="mt-1">
+                                        {getUrgencyBadge(request.urgency_level)}
                                       </div>
                                     )}
                                   </div>

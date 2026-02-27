@@ -51,6 +51,7 @@ export interface PartsRequest {
   procurement_started: boolean | null;
   allocated_to_job_card: boolean | null;
   allocated_at: string | null;
+  urgency_level: 'urgent' | '1-week' | '2-weeks' | null;
   quotes: QuoteAttachment[] | null;
   created_at: string | null;
   updated_at: string | null;
@@ -899,6 +900,7 @@ export const useOpenRequests = () => {
         `)
         .or("procurement_started.is.null,procurement_started.eq.false")
         .not("status", "in", '("fulfilled","rejected")')
+        .or("allocated_to_job_card.is.null,allocated_to_job_card.eq.false")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -936,21 +938,31 @@ export const useStartProcurement = () => {
     mutationFn: async ({
       id,
       ir_number,
+      urgency_level,
       quotes,
       inventory_id,
       is_from_inventory,
+      vendor_id,
+      unit_price,
     }: {
       id: string;
       ir_number: string;
+      urgency_level?: 'urgent' | '1-week' | '2-weeks' | null;
       quotes?: QuoteAttachment[];
       inventory_id?: string | null;
       is_from_inventory?: boolean;
+      vendor_id?: string | null;
+      unit_price?: number | null;
     }) => {
       const updateData: Record<string, unknown> = {
         ir_number,
         procurement_started: true,
         updated_at: new Date().toISOString(),
       };
+
+      if (urgency_level !== undefined) {
+        updateData.urgency_level = urgency_level;
+      }
 
       if (quotes && quotes.length > 0) {
         updateData.quotes = quotes;
@@ -959,6 +971,23 @@ export const useStartProcurement = () => {
       if (inventory_id !== undefined) {
         updateData.inventory_id = inventory_id;
         updateData.is_from_inventory = is_from_inventory ?? !!inventory_id;
+      }
+
+      if (vendor_id !== undefined) {
+        updateData.vendor_id = vendor_id;
+      }
+
+      if (unit_price !== undefined && unit_price !== null) {
+        updateData.unit_price = unit_price;
+        // Get quantity for total_price calculation
+        const { data: existing } = await supabase
+          .from("parts_requests")
+          .select("quantity")
+          .eq("id", id)
+          .single();
+        if (existing) {
+          updateData.total_price = unit_price * existing.quantity;
+        }
       }
 
       const { data, error } = await supabase

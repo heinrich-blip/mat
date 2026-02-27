@@ -30,7 +30,9 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   Building2,
+  Clock,
   FileText,
   Loader2,
   Package,
@@ -64,6 +66,8 @@ interface StartProcurementDialogProps {
   requests: PartsRequest[];
 }
 
+type UrgencyLevel = 'urgent' | '1-week' | '2-weeks' | null;
+
 // ── Main dialog ───────────────────────────────────────────────────────────
 
 export default function StartProcurementDialog({
@@ -76,6 +80,7 @@ export default function StartProcurementDialog({
   const createInventoryAndLink = useCreateInventoryAndLink();
 
   const [irNumber, setIrNumber] = useState("");
+  const [urgencyLevel, setUrgencyLevel] = useState<UrgencyLevel>(null);
   const [inventoryChoice, setInventoryChoice] = useState<"existing" | "new">("existing");
   const [showInventorySearch, setShowInventorySearch] = useState(false);
   const [selectedInventoryId, setSelectedInventoryId] = useState<string | null>(null);
@@ -114,6 +119,7 @@ export default function StartProcurementDialog({
   useEffect(() => {
     if (!open) {
       setIrNumber("");
+      setUrgencyLevel(null);
       setInventoryChoice("existing");
       setSelectedInventoryId(null);
       setSelectedInventoryName("");
@@ -230,6 +236,7 @@ export default function StartProcurementDialog({
         await startProcurement.mutateAsync({
           id: req.id,
           ir_number: irNumber,
+          urgency_level: urgencyLevel,
           quotes,
           inventory_id: reqInventoryId ?? undefined,
           is_from_inventory: !!reqInventoryId,
@@ -269,8 +276,8 @@ export default function StartProcurementDialog({
             </DialogTitle>
             <DialogDescription>
               {requests.length === 1
-                ? "Assign an IR number, select a vendor and optionally upload a quote."
-                : `One shared IR number — assign vendor, price and quote per item independently.`}
+                ? "Assign an IR number, set urgency, select a vendor and optionally upload a quote."
+                : `One shared IR number and urgency — assign vendor, price and quote per item independently.`}
             </DialogDescription>
           </DialogHeader>
 
@@ -293,6 +300,49 @@ export default function StartProcurementDialog({
                   value={irNumber}
                   onChange={(e) => setIrNumber(e.target.value)}
                 />
+              </div>
+
+              {/* ── Urgency Level ────────────────────────── */}
+              <div className="space-y-2">
+                <Label>
+                  Urgency Level
+                  {requests.length > 1 && (
+                    <span className="ml-2 text-xs text-muted-foreground font-normal">
+                      shared across all items
+                    </span>
+                  )}
+                </Label>
+                <Select
+                  value={urgencyLevel || "__none__"}
+                  onValueChange={(v) => setUrgencyLevel(v === "__none__" ? null : v as UrgencyLevel)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select urgency level (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">
+                      <span className="text-muted-foreground">No urgency set</span>
+                    </SelectItem>
+                    <SelectItem value="urgent">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4 text-red-600" />
+                        <span>Urgent</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="1-week">
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-orange-600" />
+                        <span>1 Week</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="2-weeks">
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-blue-600" />
+                        <span>2 Weeks</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* ── Single item ──────────────────────────── */}

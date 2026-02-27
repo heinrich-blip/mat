@@ -1,11 +1,19 @@
 import { useToast } from "@/hooks/use-toast";
 import { requestGoogleSheetsSync } from "@/hooks/useGoogleSheetsSync";
 import { supabase } from "@/integrations/supabase/client";
-import { Database } from "@/integrations/supabase/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useReducer } from "react";
 
-type InventoryItem = Database["public"]["Tables"]["inventory"]["Row"];
+type InventoryItem = {
+  id: string;
+  name: string | null;
+  part_number: string | null;
+  quantity: number | null;
+  unit_price: number | null;
+  location: string | null;
+  supplier: string | null;
+  [key: string]: unknown;
+};
 
 export type SourceType = "inventory" | "external" | "service";
 
@@ -441,7 +449,53 @@ export function useAddPartForm(
             : repeatNote;
         }
 
-        // Mark as out-of-stock in notes if insufficient inventory
+        // Check if item can be allocated directly from inventory
+        const hasSufficientStock = state.sourceType === "inventory" &&
+          !!state.selectedInventoryId &&
+          state.quantity <= state.availableQuantity;
+        
+        // Inventory items with sufficient stock: Allocate directly without creating procurement request
+        if (hasSufficientStock && state.selectedInventoryId) {
+          // Deduct from inventory
+          const newQuantity = state.availableQuantity - state.quantity;
+          const { error: invError } = await supabase
+            .from("inventory")
+            .update({ quantity: newQuantity })
+            .eq("id", state.selectedInventoryId);
+
+          if (invError) throw invError;
+
+          // Log allocation to job card (doesn't create procurement request)
+          const { error: txError } = await supabase
+            .from("inventory_transactions")
+            .insert([{
+              inventory_id: state.selectedInventoryId,
+              job_card_id: jobCardId,
+              transaction_type: "allocation",
+              quantity_change: -state.quantity,
+              quantity_before: state.availableQuantity,
+              quantity_after: newQuantity,
+              notes: finalNotes || `Allocated directly to job card`,
+              performed_by: null,
+            }]);
+
+          // Ignore if inventory_transactions doesn't exist
+          if (txError) console.warn("Inventory transaction logging failed:", txError);
+
+          toast({
+            title: "Success",
+            description: `Part allocated directly from inventory (${state.quantity} units)`,
+          });
+          
+          queryClient.invalidateQueries({ queryKey: ["inventory"] });
+          queryClient.invalidateQueries({ queryKey: ["job_card_parts", jobCardId] });
+          requestGoogleSheetsSync('workshop');
+          onSuccess();
+          onOpenChange(false);
+          return;
+        }
+
+        // For insufficient stock, external parts, or services: create procurement request
         const isOutOfStock = state.sourceType === "inventory" &&
           !!state.selectedInventoryId &&
           state.quantity > state.availableQuantity;
@@ -489,8 +543,8 @@ export function useAddPartForm(
         toast({
           title: "Success",
           description: isOutOfStock
-            ? `${state.sourceType === "service" ? "Service" : "Part"} added — item is short/out of stock and has been sent to procurement`
-            : `${state.sourceType === "service" ? "Service" : "Part"} added successfully`,
+            ? `${state.sourceType === "service" ? "Service" : "Part"} request created — item is short/out of stock and sent to procurement`
+            : `${state.sourceType === "service" ? "Service" : "External part"} request sent to procurement`,
         });
         requestGoogleSheetsSync('workshop');
 
