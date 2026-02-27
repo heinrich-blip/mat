@@ -1,0 +1,8 @@
+# Enforce LF for all text files
+* text=auto eol=lf
+
+# Ensure specific web files are always LF
+*.ts text eol=lf
+*.tsx text eol=lf
+*.json text eol=lf
+*.sql text eol=lf
