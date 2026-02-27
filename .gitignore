@@ -27,4 +27,4 @@ dev-dist/          # <-- Add this line
 
 .vercel
 **/.env
-.env.example
+.env.exampledev-dist/
