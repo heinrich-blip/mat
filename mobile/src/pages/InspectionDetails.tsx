@@ -1,31 +1,47 @@
-
 import CorrectiveActionDialog from "@/components/dialogs/CorrectiveActionDialog";
 import { CreateWorkOrderFromInspectionDialog } from "@/components/dialogs/CreateWorkOrderFromInspectionDialog";
 import { RootCauseAnalysisDialog } from "@/components/dialogs/RootCauseAnalysisDialog";
 import { InspectionActionsMenu } from "@/components/inspections/InspectionActionsMenu";
 import { InspectionForm } from "@/components/inspections/InspectionForm";
 import Layout from "@/components/MobilePageLayout";
-import
-  {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-  } from "@/components/ui/alert-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ArrowLeft, Calendar, Car, ClipboardList, FileText, MapPin, User } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  Calendar,
+  Car,
+  CheckCircle2,
+  Clock,
+  FileText,
+  User,
+  XCircle,
+} from "lucide-react";
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { cn } from "@/lib/utils";
+
+// Add Skeleton component if it doesn't exist, or create a simple one
+const Skeleton = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
+  <div
+    className={cn("animate-pulse rounded-md bg-muted", className)}
+    {...props}
+  />
+);
 
 interface Fault {
   id: string;
@@ -55,7 +71,7 @@ interface InspectionData {
   notes: string | null;
   status: string;
   template_id?: string | null;
-  root_cause_analysis?: RootCauseAnalysis | null | unknown; // Can be Json from DB
+  root_cause_analysis?: RootCauseAnalysis | null | unknown;
   created_at: string | null;
   completed_at: string | null;
   completed_by: string | null;
@@ -66,6 +82,59 @@ interface InspectionData {
   scanned_vehicle_qr: string | null;
   updated_at: string | null;
 }
+
+interface InfoRowProps {
+  icon: React.ElementType;
+  label: string;
+  value: string | number | null | undefined;
+  className?: string;
+}
+
+const InfoRow = ({ icon: Icon, label, value, className }: InfoRowProps) => (
+  <div className={cn("flex items-start gap-3 py-2", className)}>
+    <div className="w-5 h-5 text-muted-foreground shrink-0 mt-0.5">
+      <Icon className="w-5 h-5" />
+    </div>
+    <div className="flex-1 min-w-0">
+      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+        {label}
+      </p>
+      <p className="text-sm font-medium mt-0.5 break-words">{value || "N/A"}</p>
+    </div>
+  </div>
+);
+
+interface StatusBadgeProps {
+  status: string;
+}
+
+const StatusBadge = ({ status }: StatusBadgeProps) => {
+  const variants: Record<string, string> = {
+    completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    in_progress: "bg-amber-50 text-amber-700 border-amber-200",
+    cancelled: "bg-rose-50 text-rose-700 border-rose-200",
+  };
+
+  const icons: Record<string, React.ElementType> = {
+    completed: CheckCircle2,
+    in_progress: Clock,
+    cancelled: XCircle,
+  };
+
+  const Icon = icons[status] || CheckCircle2;
+
+  return (
+    <div
+      className={cn(
+        "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border",
+        variants[status] || "bg-gray-50 text-gray-700 border-gray-200"
+      )}
+    >
+      <Icon className="w-3.5 h-3.5" />
+      <span className="capitalize">{status.replace("_", " ")}</span>
+    </div>
+  );
+};
 
 const InspectionDetails = () => {
   const { id } = useParams<{ id: string }>();
@@ -78,7 +147,11 @@ const InspectionDetails = () => {
   const [showCreateWorkOrder, setShowCreateWorkOrder] = useState(false);
 
   // Fetch inspection details
-  const { data: inspection, isLoading, refetch } = useQuery<InspectionData>({
+  const {
+    data: inspection,
+    isLoading,
+    refetch,
+  } = useQuery<InspectionData>({
     queryKey: ["inspection", id],
     queryFn: async () => {
       if (!id) throw new Error("No inspection ID provided");
@@ -95,7 +168,7 @@ const InspectionDetails = () => {
     enabled: !!id,
   });
 
-  // Fetch template information separately
+  // Fetch template information
   const { data: template, isLoading: isTemplateLoading } = useQuery({
     queryKey: ["inspection_template", inspection?.template_id],
     queryFn: async () => {
@@ -134,7 +207,7 @@ const InspectionDetails = () => {
     enabled: !!id,
   });
 
-  // Fetch inspection items (tyre positions / checklist items)
+  // Fetch inspection items
   const { data: inspectionItems = [] } = useQuery({
     queryKey: ["inspection_items_detail", id],
     queryFn: async () => {
@@ -152,49 +225,24 @@ const InspectionDetails = () => {
     enabled: !!id,
   });
 
-  // Action handlers
-  const handleView = () => {
-    toast({
-      title: "Viewing Inspection",
-      description: "You are already viewing this inspection",
-    });
-  };
-
   const handleShare = () => {
     if (!inspection) return;
     navigator.clipboard.writeText(window.location.href);
     toast({
-      title: "Link Copied",
+      title: "Link copied",
       description: `Inspection ${inspection.inspection_number} link copied to clipboard`,
     });
-  };
-
-  const handleCreateWorkOrder = () => {
-    if (!inspection) return;
-    setShowCreateWorkOrder(true);
   };
 
   const handleCorrectiveAction = () => {
     if (faults.length === 0) {
       toast({
-        title: "No Faults Found",
+        title: "No faults found",
         description: "This inspection has no recorded faults",
       });
       return;
     }
     setShowCorrectiveAction(true);
-  };
-
-  const handleRootCauseAnalysis = () => {
-    setShowRootCauseAnalysis(true);
-  };
-
-  const handleViewPDF = () => {
-    if (!inspection) return;
-    toast({
-      title: "Generating PDF",
-      description: `Creating PDF for ${inspection.inspection_number}...`,
-    });
   };
 
   const handleArchive = async () => {
@@ -222,10 +270,6 @@ const InspectionDetails = () => {
     }
   };
 
-  const handleDelete = () => {
-    setShowDeleteAlert(true);
-  };
-
   const confirmDelete = async () => {
     if (!inspection) return;
 
@@ -251,11 +295,25 @@ const InspectionDetails = () => {
     }
   };
 
+  const getSeverityVariant = (severity: string): "default" | "destructive" | "secondary" => {
+    switch (severity) {
+      case "critical":
+      case "high":
+        return "destructive";
+      case "medium":
+        return "default";
+      default:
+        return "secondary";
+    }
+  };
+
   if (isLoading) {
     return (
       <Layout>
-        <div className="flex items-center justify-center h-96">
-          <p className="text-muted-foreground">Loading inspection details...</p>
+        <div className="space-y-4 p-4">
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-40 w-full" />
+          <Skeleton className="h-60 w-full" />
         </div>
       </Layout>
     );
@@ -264,8 +322,14 @@ const InspectionDetails = () => {
   if (!inspection) {
     return (
       <Layout>
-        <div className="flex flex-col items-center justify-center h-96 gap-4">
-          <p className="text-muted-foreground">Inspection not found</p>
+        <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 text-center">
+          <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+            <AlertTriangle className="w-8 h-8 text-muted-foreground" />
+          </div>
+          <h2 className="text-xl font-semibold mb-2">Inspection not found</h2>
+          <p className="text-sm text-muted-foreground mb-6">
+            The inspection you're looking for doesn't exist or has been removed.
+          </p>
           <Button onClick={() => navigate("/")}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Inspections
@@ -275,74 +339,82 @@ const InspectionDetails = () => {
     );
   }
 
-  const getSeverityVariant = (severity: string) => {
-    switch (severity) {
-      case "critical": return "destructive";
-      case "high": return "destructive";
-      case "medium": return "default";
-      default: return "secondary";
-    }
-  };
-
   return (
     <Layout>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            <Button variant="ghost" size="icon" className="h-10 w-10 rounded-xl shrink-0" onClick={() => navigate("/")}>
+      {/* Sticky Header */}
+      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
+        <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 rounded-full shrink-0"
+              onClick={() => navigate("/")}
+            >
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div className="min-w-0">
-              <h1 className="text-xl font-bold">Inspection Details</h1>
-              <p className="text-sm text-muted-foreground truncate">{inspection.inspection_number}</p>
+              <h1 className="text-lg font-semibold truncate">Inspection Details</h1>
+              <p className="text-xs text-muted-foreground truncate">
+                {inspection.inspection_number}
+              </p>
             </div>
           </div>
 
           <InspectionActionsMenu
             inspectionId={inspection.id}
             inspectionNumber={inspection.inspection_number}
-            onView={handleView}
+            onView={() => {}}
             onShare={handleShare}
-            onCreateWorkOrder={handleCreateWorkOrder}
+            onCreateWorkOrder={() => setShowCreateWorkOrder(true)}
             onCorrectiveAction={handleCorrectiveAction}
-            onRootCauseAnalysis={handleRootCauseAnalysis}
-            onViewPDF={handleViewPDF}
+            onRootCauseAnalysis={() => setShowRootCauseAnalysis(true)}
+            onViewPDF={() => {}}
             onArchive={handleArchive}
-            onDelete={handleDelete}
+            onDelete={() => setShowDeleteAlert(true)}
           />
         </div>
+      </div>
 
-        {/* Show Inspection Form if status is in_progress */}
+      <div className="p-4 space-y-4">
+        {/* Status Bar */}
+        <div className="flex items-center justify-between">
+          <StatusBadge status={inspection.status} />
+          <p className="text-xs text-muted-foreground">
+            {new Date(inspection.inspection_date).toLocaleDateString("en-GB", {
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+            })}
+          </p>
+        </div>
+
+        {/* In Progress State */}
         {inspection.status === "in_progress" && (
-          <>
-            {/* Show template info card while loading or when template is available */}
+          <div className="space-y-4">
             {inspection.template_id && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <ClipboardList className="h-5 w-5" />
-                    Inspection Template
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
+              <Card className="border-0 shadow-sm">
+                <CardContent className="p-4">
                   {isTemplateLoading ? (
-                    <p className="text-sm text-muted-foreground">Loading template...</p>
-                  ) : template ? (
                     <div className="space-y-2">
+                      <Skeleton className="h-4 w-24" />
+                      <Skeleton className="h-4 w-full" />
+                    </div>
+                  ) : template ? (
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        Template
+                      </p>
                       <p className="font-medium">{template.name}</p>
                       {template.description && (
                         <p className="text-sm text-muted-foreground">{template.description}</p>
                       )}
                     </div>
-                  ) : (
-                    <p className="text-sm text-destructive">Template not found</p>
-                  )}
+                  ) : null}
                 </CardContent>
               </Card>
             )}
 
-            {/* Only show form when template is loaded or if there's no template_id */}
             {(!inspection.template_id || !isTemplateLoading) && (
               <InspectionForm
                 inspectionId={inspection.id}
@@ -350,123 +422,56 @@ const InspectionDetails = () => {
                 onComplete={() => refetch()}
               />
             )}
-
-            {/* Show loading state while template is loading */}
-            {inspection.template_id && isTemplateLoading && (
-              <Card>
-                <CardContent className="py-8">
-                  <div className="flex items-center justify-center">
-                    <p className="text-muted-foreground">Loading inspection form...</p>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </>
+          </div>
         )}
 
-        {/* Show Results if status is completed */}
+        {/* Completed State */}
         {inspection.status === "completed" && (
-          <div className="space-y-6">
-            {/* Inspection Info */}
+          <div className="space-y-4">
+            {/* Key Information Cards */}
             <div className="grid gap-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Inspection Information</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-start gap-3">
-                    <Calendar className="h-5 w-5 text-muted-foreground mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium">Date & Time</p>
-                      <p className="text-sm text-muted-foreground">
-                        {new Date(inspection.inspection_date).toLocaleString("en-GB", {
-                          day: "2-digit",
-                          month: "short",
-                          year: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-3">
-                    <User className="h-5 w-5 text-muted-foreground mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium">Inspector</p>
-                      <p className="text-sm text-muted-foreground">{inspection.inspector_name}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-3">
-                    <FileText className="h-5 w-5 text-muted-foreground mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium">Inspection Type</p>
-                      <p className="text-sm text-muted-foreground">{inspection.inspection_type || "N/A"}</p>
-                    </div>
-                  </div>
-
-                  {/* Template Information */}
+              <Card className="border-0 shadow-sm">
+                <CardContent className="p-4 divide-y">
+                  <InfoRow icon={User} label="Inspector" value={inspection.inspector_name} />
+                  <InfoRow
+                    icon={Calendar}
+                    label="Date & Time"
+                    value={new Date(inspection.inspection_date).toLocaleString("en-GB", {
+                      day: "2-digit",
+                      month: "short",
+                      year: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  />
+                  <InfoRow
+                    icon={FileText}
+                    label="Inspection Type"
+                    value={inspection.inspection_type || "Standard Inspection"}
+                  />
                   {template && (
-                    <div className="flex items-start gap-3">
-                      <ClipboardList className="h-5 w-5 text-muted-foreground mt-0.5" />
-                      <div>
-                        <p className="text-sm font-medium">Template Used</p>
-                        <p className="text-sm text-muted-foreground">{template.name}</p>
-                        {template.description && (
-                          <p className="text-xs text-muted-foreground mt-1">{template.description}</p>
-                        )}
-                      </div>
-                    </div>
+                    <InfoRow icon={FileText} label="Template" value={template.name} />
                   )}
-
-                  <div className="flex items-start gap-3">
-                    <MapPin className="h-5 w-5 text-muted-foreground mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium">Status</p>
-                      <Badge variant={inspection.status === "completed" ? "default" : "secondary"}>
-                        {inspection.status}
-                      </Badge>
-                    </div>
-                  </div>
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Vehicle Information</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-start gap-3">
-                    <Car className="h-5 w-5 text-muted-foreground mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium">Registration</p>
-                      <p className="text-sm text-muted-foreground">{inspection.vehicle_registration}</p>
-                    </div>
-                  </div>
-
-                  {(inspection.vehicle_make || inspection.vehicle_model) && (
-                    <div className="flex items-start gap-3">
-                      <Car className="h-5 w-5 text-muted-foreground mt-0.5" />
-                      <div>
-                        <p className="text-sm font-medium">Make & Model</p>
-                        <p className="text-sm text-muted-foreground">
-                          {inspection.vehicle_make} {inspection.vehicle_model}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
+              <Card className="border-0 shadow-sm">
+                <CardContent className="p-4 divide-y">
+                  <InfoRow
+                    icon={Car}
+                    label="Vehicle"
+                    value={
+                      inspection.vehicle_registration ||
+                      `${inspection.vehicle_make || ""} ${inspection.vehicle_model || ""}`.trim() ||
+                      "Not specified"
+                    }
+                  />
                   {inspection.odometer_reading && (
-                    <div className="flex items-start gap-3">
-                      <Car className="h-5 w-5 text-muted-foreground mt-0.5" />
-                      <div>
-                        <p className="text-sm font-medium">Odometer Reading</p>
-                        <p className="text-sm text-muted-foreground">
-                          {inspection.odometer_reading.toLocaleString()} km
-                        </p>
-                      </div>
-                    </div>
+                    <InfoRow
+                      icon={Car}
+                      label="Odometer"
+                      value={`${inspection.odometer_reading.toLocaleString()} km`}
+                    />
                   )}
                 </CardContent>
               </Card>
@@ -474,55 +479,55 @@ const InspectionDetails = () => {
 
             {/* Notes */}
             {inspection.notes && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Notes</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{inspection.notes}</p>
+              <Card className="border-0 shadow-sm">
+                <CardContent className="p-4">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                    Notes
+                  </p>
+                  <p className="text-sm whitespace-pre-wrap">{inspection.notes}</p>
                 </CardContent>
               </Card>
             )}
 
             {/* Faults */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5" />
-                  Faults ({faults.length})
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+            <Card className="border-0 shadow-sm">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-4">
+                  <AlertTriangle className="w-5 h-5 text-amber-500" />
+                  <h3 className="font-semibold">Faults ({faults.length})</h3>
+                </div>
+
                 {faults.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No faults recorded for this inspection</p>
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No faults recorded
+                  </p>
                 ) : (
-                  <div className="space-y-4">
+                  <div className="space-y-3">
                     {faults.map((fault) => (
-                      <div key={fault.id} className="border rounded-lg p-4 space-y-2">
-                        <div className="flex items-start justify-between">
-                          <p className="font-medium">{fault.fault_description}</p>
-                          <Badge variant={getSeverityVariant(fault.severity)}>
+                      <div key={fault.id} className="bg-muted/50 rounded-lg p-3 space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-sm font-medium flex-1">{fault.fault_description}</p>
+                          <Badge variant={getSeverityVariant(fault.severity)} className="shrink-0">
                             {fault.severity}
                           </Badge>
                         </div>
 
                         {fault.corrective_action_status && (
-                          <>
-                            <Separator />
-                            <div className="space-y-1">
-                              <p className="text-sm font-medium">Corrective Action Status:</p>
-                              <Badge variant={fault.corrective_action_status === "fixed" ? "default" : "secondary"}>
-                                {fault.corrective_action_status}
-                              </Badge>
-                            </div>
-                          </>
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-muted-foreground">Status:</span>
+                            <Badge
+                              variant={fault.corrective_action_status === "fixed" ? "default" : "secondary"}
+                              className="text-[10px]"
+                            >
+                              {fault.corrective_action_status}
+                            </Badge>
+                          </div>
                         )}
 
                         {fault.corrective_action_notes && (
-                          <div className="space-y-1">
-                            <p className="text-sm font-medium">Notes:</p>
-                            <p className="text-sm text-muted-foreground">{fault.corrective_action_notes}</p>
-                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {fault.corrective_action_notes}
+                          </p>
                         )}
                       </div>
                     ))}
@@ -531,38 +536,43 @@ const InspectionDetails = () => {
               </CardContent>
             </Card>
 
-            {/* Inspection Items (Tyre Positions / Checklist) */}
+            {/* Inspection Items */}
             {inspectionItems.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <ClipboardList className="h-5 w-5" />
-                    Inspection Items ({inspectionItems.length})
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
+              <Card className="border-0 shadow-sm">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-4">
+                    <FileText className="w-5 h-5 text-blue-500" />
+                    <h3 className="font-semibold">Inspection Items ({inspectionItems.length})</h3>
+                  </div>
+
                   <div className="space-y-2">
                     {inspectionItems.map((item) => (
                       <div
                         key={item.id}
-                        className={`border rounded-lg p-3 border-l-4 ${
-                          item.status === 'fail' ? 'border-l-red-500 bg-red-50/50' :
-                          item.status === 'pass' ? 'border-l-green-500 bg-green-50/30' :
-                          'border-l-gray-300'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-medium">{item.item_name}</p>
-                          <Badge
-                            variant={item.status === 'fail' ? 'destructive' : item.status === 'pass' ? 'default' : 'secondary'}
-                            className="text-[11px] flex-shrink-0"
-                          >
-                            {item.status === 'fail' ? 'FAIL' : item.status === 'pass' ? 'PASS' : item.status?.toUpperCase()}
-                          </Badge>
-                        </div>
-                        {item.notes && (
-                          <p className="text-xs text-muted-foreground mt-1.5 whitespace-pre-line">{item.notes}</p>
+                        className={cn(
+                          "flex items-start justify-between p-3 rounded-lg border-l-4",
+                          item.status === "fail"
+                            ? "border-l-rose-500 bg-rose-50/50"
+                            : item.status === "pass"
+                            ? "border-l-emerald-500 bg-emerald-50/30"
+                            : "border-l-gray-300 bg-muted/30"
                         )}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">{item.item_name}</p>
+                          {item.notes && (
+                            <p className="text-xs text-muted-foreground mt-1">{item.notes}</p>
+                          )}
+                        </div>
+                        <Badge
+                          variant={item.status === "fail" ? "destructive" : "secondary"}
+                          className={cn(
+                            "ml-2 shrink-0 text-[10px]",
+                            item.status === "pass" && "bg-emerald-100 text-emerald-700 hover:bg-emerald-100"
+                          )}
+                        >
+                          {item.status?.toUpperCase()}
+                        </Badge>
                       </div>
                     ))}
                   </div>
@@ -572,34 +582,30 @@ const InspectionDetails = () => {
 
             {/* Root Cause Analysis */}
             {inspection.root_cause_analysis && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Root Cause Analysis</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <p className="text-sm font-medium">Root Cause:</p>
-                    <p className="text-sm text-muted-foreground">
-                      {(inspection.root_cause_analysis as RootCauseAnalysis)?.root_cause || 'N/A'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Conducted By:</p>
-                    <p className="text-sm text-muted-foreground">
-                      {(inspection.root_cause_analysis as RootCauseAnalysis)?.conducted_by || 'N/A'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Responsible Person:</p>
-                    <p className="text-sm text-muted-foreground">
-                      {(inspection.root_cause_analysis as RootCauseAnalysis)?.responsible_person || 'N/A'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Analysis Notes:</p>
-                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                      {(inspection.root_cause_analysis as RootCauseAnalysis)?.notes || 'N/A'}
-                    </p>
+              <Card className="border-0 shadow-sm">
+                <CardContent className="p-4">
+                  <h3 className="font-semibold mb-3">Root Cause Analysis</h3>
+                  <div className="space-y-3 text-sm">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Root Cause</p>
+                      <p className="font-medium">
+                        {(inspection.root_cause_analysis as RootCauseAnalysis)?.root_cause || "N/A"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Conducted By</p>
+                      <p className="font-medium">
+                        {(inspection.root_cause_analysis as RootCauseAnalysis)?.conducted_by || "N/A"}
+                      </p>
+                    </div>
+                    {(inspection.root_cause_analysis as RootCauseAnalysis)?.notes && (
+                      <div>
+                        <p className="text-xs text-muted-foreground">Notes</p>
+                        <p className="text-sm text-muted-foreground">
+                          {(inspection.root_cause_analysis as RootCauseAnalysis)?.notes}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -608,7 +614,7 @@ const InspectionDetails = () => {
         )}
       </div>
 
-      {/* Corrective Action Dialog */}
+      {/* Dialogs */}
       {faults.length > 0 && (
         <CorrectiveActionDialog
           open={showCorrectiveAction}
@@ -622,7 +628,6 @@ const InspectionDetails = () => {
         />
       )}
 
-      {/* Root Cause Analysis Dialog */}
       <RootCauseAnalysisDialog
         open={showRootCauseAnalysis}
         onOpenChange={setShowRootCauseAnalysis}
@@ -634,7 +639,6 @@ const InspectionDetails = () => {
         }}
       />
 
-      {/* Create Job Card Dialog */}
       <CreateWorkOrderFromInspectionDialog
         open={showCreateWorkOrder}
         onOpenChange={setShowCreateWorkOrder}
@@ -644,29 +648,28 @@ const InspectionDetails = () => {
         onSuccess={() => {
           toast({
             title: "Job Card Created",
-            description: "Job card has been successfully created with all identified faults as tasks",
+            description: "Job card has been successfully created",
           });
           refetch();
           setShowCreateWorkOrder(false);
         }}
       />
 
-      {/* Delete Confirmation Alert */}
       <AlertDialog open={showDeleteAlert} onOpenChange={setShowDeleteAlert}>
-        <AlertDialogContent>
+        <AlertDialogContent className="w-[90%] rounded-lg">
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogTitle>Delete Inspection?</AlertDialogTitle>
             <AlertDialogDescription>
               This will permanently delete inspection{" "}
               <span className="font-semibold">{inspection.inspection_number}</span>.
               This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogFooter className="flex-row gap-2">
+            <AlertDialogCancel className="flex-1">Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmDelete}
-              className="bg-destructive hover:bg-destructive/90"
+              className="flex-1 bg-destructive hover:bg-destructive/90"
             >
               Delete
             </AlertDialogAction>

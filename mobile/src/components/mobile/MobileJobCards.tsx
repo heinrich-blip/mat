@@ -5,19 +5,23 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import {
   Calendar,
+  CheckCircle2,
   ChevronRight,
   ClipboardList,
+  Clock,
   FileText,
   Filter,
   Plus,
   Search,
   Truck,
   User,
+  XCircle,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -52,6 +56,91 @@ interface JobCard {
     latestPartName: string | null;
   };
 }
+
+interface PriorityFilter {
+  value: string;
+  label: string;
+  color: string;
+}
+
+const priorityFilters: PriorityFilter[] = [
+  { value: "all", label: "All", color: "bg-gray-100 text-gray-700" },
+  { value: "urgent", label: "Urgent", color: "bg-rose-100 text-rose-700 border-rose-200" },
+  { value: "high", label: "High", color: "bg-orange-100 text-orange-700 border-orange-200" },
+  { value: "medium", label: "Medium", color: "bg-blue-100 text-blue-700 border-blue-200" },
+  { value: "low", label: "Low", color: "bg-gray-100 text-gray-700 border-gray-200" },
+];
+
+const JobCardSkeleton = () => (
+  <Card className="border-0 shadow-sm">
+    <CardContent className="p-4">
+      <div className="flex items-start justify-between gap-2 mb-3">
+        <div className="flex-1">
+          <Skeleton className="h-3 w-24 mb-2" />
+          <Skeleton className="h-4 w-40" />
+        </div>
+        <Skeleton className="h-6 w-16 rounded-full" />
+      </div>
+      <div className="flex flex-wrap gap-3">
+        <Skeleton className="h-3 w-20" />
+        <Skeleton className="h-3 w-24" />
+        <Skeleton className="h-3 w-16" />
+      </div>
+    </CardContent>
+  </Card>
+);
+
+const StatusBadge = ({ status }: { status: string }) => {
+  const variants: Record<string, string> = {
+    pending: "bg-amber-50 text-amber-700 border-amber-200",
+    in_progress: "bg-blue-50 text-blue-700 border-blue-200",
+    completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    on_hold: "bg-orange-50 text-orange-700 border-orange-200",
+  };
+
+  const icons: Record<string, React.ElementType> = {
+    pending: Clock,
+    in_progress: Clock,
+    completed: CheckCircle2,
+    on_hold: XCircle,
+  };
+
+  const normalizedStatus = status?.toLowerCase().replace(" ", "_") || "pending";
+  const Icon = icons[normalizedStatus] || Clock;
+
+  return (
+    <div
+      className={cn(
+        "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border",
+        variants[normalizedStatus] || "bg-gray-50 text-gray-700 border-gray-200"
+      )}
+    >
+      <Icon className="w-3 h-3" />
+      <span className="capitalize">{status?.replace("_", " ")}</span>
+    </div>
+  );
+};
+
+const PriorityBadge = ({ priority }: { priority: string }) => {
+  const variants: Record<string, string> = {
+    urgent: "bg-rose-100 text-rose-700 border-rose-200",
+    high: "bg-orange-100 text-orange-700 border-orange-200",
+    medium: "bg-blue-100 text-blue-700 border-blue-200",
+    low: "bg-gray-100 text-gray-700 border-gray-200",
+  };
+
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        "text-[10px] px-1.5 py-0.5 font-medium",
+        variants[priority.toLowerCase()] || "bg-gray-100 text-gray-700"
+      )}
+    >
+      {priority}
+    </Badge>
+  );
+};
 
 const MobileJobCards = () => {
   const [selectedJob, setSelectedJob] = useState<JobCard | null>(null);
@@ -111,48 +200,34 @@ const MobileJobCards = () => {
     },
   });
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "urgent": return "bg-red-500 text-white";
-      case "high": return "bg-orange-500 text-white";
-      case "medium": return "bg-blue-500 text-white";
-      case "low": return "bg-gray-400 text-white";
-      default: return "bg-gray-400 text-white";
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    const s = status?.toLowerCase();
-    switch (s) {
-      case "pending": return "bg-yellow-100 text-yellow-800 border-yellow-200";
-      case "in_progress":
-      case "in progress": return "bg-blue-100 text-blue-800 border-blue-200";
-      case "completed": return "bg-green-100 text-green-800 border-green-200";
-      case "on_hold":
-      case "on hold": return "bg-orange-100 text-orange-800 border-orange-200";
-      default: return "bg-gray-100 text-gray-800 border-gray-200";
-    }
-  };
-
   const filteredCards = jobCards.filter((card) => {
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
-      if (!card.title.toLowerCase().includes(term) &&
-          !card.job_number.toLowerCase().includes(term) &&
-          !(card.vehicle?.fleet_number || "").toLowerCase().includes(term)) {
-        return false;
-      }
+      const matchesSearch = 
+        card.title?.toLowerCase().includes(term) ||
+        card.job_number?.toLowerCase().includes(term) ||
+        card.vehicle?.fleet_number?.toLowerCase().includes(term) ||
+        card.vehicle?.registration_number?.toLowerCase().includes(term) ||
+        card.assignee?.toLowerCase().includes(term);
+      
+      if (!matchesSearch) return false;
     }
-    if (selectedPriority !== "all" && card.priority !== selectedPriority) return false;
+    
+    if (selectedPriority !== "all" && card.priority?.toLowerCase() !== selectedPriority.toLowerCase()) {
+      return false;
+    }
+    
     return true;
   });
 
   const activeCards = filteredCards.filter(c => {
-    const s = c.status?.toLowerCase();
-    return s === "pending" || s === "in_progress" || s === "in progress";
+    const status = c.status?.toLowerCase().replace(" ", "_");
+    return status === "pending" || status === "in_progress";
   });
 
-  const completedCards = filteredCards.filter(c => c.status?.toLowerCase() === "completed");
+  const completedCards = filteredCards.filter(c => 
+    c.status?.toLowerCase() === "completed"
+  );
 
   const handleJobClick = (job: JobCard) => {
     setSelectedJob(job);
@@ -161,155 +236,229 @@ const MobileJobCards = () => {
 
   const JobCardItem = ({ card }: { card: JobCard }) => (
     <Card
-      className="active:scale-[0.98] transition-transform cursor-pointer border-l-4"
+      className="active:scale-[0.98] transition-transform cursor-pointer border-0 shadow-sm border-l-4"
       style={{
-        borderLeftColor: card.priority === "urgent" ? "#ef4444"
-          : card.priority === "high" ? "#f97316"
-          : card.priority === "medium" ? "#3b82f6"
+        borderLeftColor: 
+          card.priority?.toLowerCase() === "urgent" ? "#f43f5e"
+          : card.priority?.toLowerCase() === "high" ? "#f97316"
+          : card.priority?.toLowerCase() === "medium" ? "#3b82f6"
           : "#9ca3af",
       }}
       onClick={() => handleJobClick(card)}
     >
-      <CardContent className="p-3">
-        <div className="flex items-start justify-between gap-2">
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-2 mb-2">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs font-mono text-muted-foreground">#{card.job_number}</span>
-              <Badge className={cn("text-[11px] px-1.5 py-0.5", getStatusColor(card.status))} variant="outline">
-                {card.status?.replace("_", " ")}
-              </Badge>
+              <span className="text-xs font-mono text-muted-foreground">
+                #{card.job_number}
+              </span>
+              <StatusBadge status={card.status} />
             </div>
-            <p className="font-medium text-sm leading-snug truncate">{card.title}</p>
+            <p className="font-semibold text-sm leading-snug line-clamp-2">{card.title}</p>
           </div>
           <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-1" />
         </div>
 
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2 text-xs text-muted-foreground">
           {card.vehicle && (
-            <span className="flex items-center gap-1">
-              <Truck className="h-3 w-3" />
-              {card.vehicle.fleet_number || card.vehicle.registration_number}
+            <span className="flex items-center gap-1.5">
+              <Truck className="h-3.5 w-3.5" />
+              <span className="font-medium">
+                {card.vehicle.fleet_number || card.vehicle.registration_number}
+              </span>
             </span>
           )}
           {card.assignee && (
-            <span className="flex items-center gap-1">
-              <User className="h-3 w-3" />
+            <span className="flex items-center gap-1.5">
+              <User className="h-3.5 w-3.5" />
               {card.assignee}
             </span>
           )}
           {card.due_date && (
-            <span className="flex items-center gap-1">
-              <Calendar className="h-3 w-3" />
-              {new Date(card.due_date).toLocaleDateString()}
+            <span className="flex items-center gap-1.5">
+              <Calendar className="h-3.5 w-3.5" />
+              {new Date(card.due_date).toLocaleDateString("en-GB", {
+                day: "numeric",
+                month: "short",
+              })}
             </span>
           )}
           {card.inspection && (
-            <span className="flex items-center gap-1">
-              <FileText className="h-3 w-3" />
+            <span className="flex items-center gap-1.5">
+              <FileText className="h-3.5 w-3.5" />
               {card.inspection.inspection_number}
             </span>
           )}
+        </div>
+
+        <div className="flex items-center justify-between mt-3">
+          <PriorityBadge priority={card.priority} />
+          
           {card.partsSummary && card.partsSummary.count > 0 && (
-            <Badge variant="outline" className="text-[11px] px-1.5 py-0.5 h-5">
+            <Badge variant="outline" className="text-[10px] px-2 py-0.5 bg-muted/50">
               {card.partsSummary.count} part{card.partsSummary.count > 1 ? "s" : ""}
             </Badge>
           )}
         </div>
-
-        <Badge className={cn("text-[11px] px-1.5 py-0.5 mt-2", getPriorityColor(card.priority))}>
-          {card.priority}
-        </Badge>
       </CardContent>
     </Card>
   );
 
   return (
-    <div className="space-y-3">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold flex items-center gap-2">
-            <ClipboardList className="h-5 w-5" />
-            Job Cards
-          </h1>
+    <div className="min-h-screen bg-background pb-24">
+      {/* Sticky Header */}
+      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
+        <div className="px-4 py-3">
+          <div className="flex items-center justify-between mb-1">
+            <h1 className="text-xl font-bold flex items-center gap-2">
+              <ClipboardList className="h-5 w-5 text-primary" />
+              Job Cards
+            </h1>
+            <Badge variant="outline" className="rounded-full px-3 py-1">
+              <span className="font-mono">{jobCards.length}</span> total
+            </Badge>
+          </div>
           <p className="text-xs text-muted-foreground">
-            {activeCards.length} active, {completedCards.length} completed
+            <span className="text-amber-600 font-medium">{activeCards.length} active</span>
+            {" · "}
+            <span className="text-emerald-600 font-medium">{completedCards.length} completed</span>
           </p>
         </div>
       </div>
 
-      {/* Search & Filters */}
-      <div className="space-y-2">
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search jobs..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 h-11 text-sm rounded-xl"
-            />
+      <div className="p-4 space-y-4">
+        {/* Search & Filters */}
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by number, vehicle, assignee..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9 h-11 text-sm rounded-xl bg-muted/50 border-0 focus-visible:ring-1"
+              />
+              {searchTerm && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full"
+                  onClick={() => setSearchTerm("")}
+                >
+                  <XCircle className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+            <Button
+              variant={showFilters ? "default" : "outline"}
+              size="icon"
+              className={cn(
+                "h-11 w-11 flex-shrink-0 rounded-xl",
+                showFilters && "bg-primary text-primary-foreground"
+              )}
+              onClick={() => setShowFilters(!showFilters)}
+            >
+              <Filter className="h-4 w-4" />
+            </Button>
           </div>
-          <Button
-            variant={showFilters ? "default" : "outline"}
-            size="icon"
-            className="h-11 w-11 flex-shrink-0 rounded-xl"
-            onClick={() => setShowFilters(!showFilters)}
-          >
-            <Filter className="h-4 w-4" />
-          </Button>
+
+          {showFilters && (
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+              {priorityFilters.map((filter) => (
+                <Button
+                  key={filter.value}
+                  variant={selectedPriority === filter.value ? "default" : "outline"}
+                  size="sm"
+                  className={cn(
+                    "text-xs h-9 px-4 flex-shrink-0 rounded-lg transition-all",
+                    selectedPriority === filter.value 
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-muted"
+                  )}
+                  onClick={() => setSelectedPriority(filter.value)}
+                >
+                  {filter.label}
+                </Button>
+              ))}
+            </div>
+          )}
         </div>
 
-        {showFilters && (
-          <div className="flex gap-2 overflow-x-auto pb-1 scroll-row">
-            {["all", "urgent", "high", "medium", "low"].map((p) => (
-              <Button
-                key={p}
-                variant={selectedPriority === p ? "default" : "outline"}
-                size="sm"
-                className="text-xs h-9 px-3 flex-shrink-0 rounded-lg"
-                onClick={() => setSelectedPriority(p)}
-              >
-                {p === "all" ? "All" : p.charAt(0).toUpperCase() + p.slice(1)}
-              </Button>
-            ))}
-          </div>
-        )}
+        {/* Tabs */}
+        <Tabs defaultValue="active" className="w-full">
+          <TabsList className="grid w-full grid-cols-2 h-11 rounded-xl bg-muted/50 p-1">
+            <TabsTrigger 
+              value="active" 
+              className="text-xs rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm"
+            >
+              Active
+              <Badge variant="secondary" className="ml-2 text-[10px] px-1.5">
+                {activeCards.length}
+              </Badge>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="completed" 
+              className="text-xs rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm"
+            >
+              Completed
+              <Badge variant="secondary" className="ml-2 text-[10px] px-1.5">
+                {completedCards.length}
+              </Badge>
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="active" className="mt-3 space-y-2">
+            {isLoading ? (
+              <div className="space-y-2">
+                <JobCardSkeleton />
+                <JobCardSkeleton />
+                <JobCardSkeleton />
+              </div>
+            ) : activeCards.length === 0 ? (
+              <div className="text-center py-12 px-4">
+                <div className="w-16 h-16 rounded-full bg-muted mx-auto mb-4 flex items-center justify-center">
+                  <ClipboardList className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <h3 className="font-semibold mb-1">No active jobs</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  {searchTerm || selectedPriority !== "all" 
+                    ? "Try adjusting your filters" 
+                    : "Create your first job card to get started"}
+                </p>
+                {!searchTerm && selectedPriority === "all" && (
+                  <Button onClick={() => setShowAddDialog(true)} className="rounded-xl">
+                    <Plus className="h-4 w-4 mr-2" />
+                    New Job Card
+                  </Button>
+                )}
+              </div>
+            ) : (
+              activeCards.map((card) => <JobCardItem key={card.id} card={card} />)
+            )}
+          </TabsContent>
+
+          <TabsContent value="completed" className="mt-3 space-y-2">
+            {completedCards.length === 0 ? (
+              <div className="text-center py-12 px-4">
+                <div className="w-16 h-16 rounded-full bg-muted mx-auto mb-4 flex items-center justify-center">
+                  <CheckCircle2 className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <h3 className="font-semibold mb-1">No completed jobs</h3>
+                <p className="text-sm text-muted-foreground">
+                  Completed job cards will appear here
+                </p>
+              </div>
+            ) : (
+              completedCards.map((card) => <JobCardItem key={card.id} card={card} />)
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
-
-      {/* Tabs for Active / Completed */}
-      <Tabs defaultValue="active" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 h-10 rounded-xl">
-          <TabsTrigger value="active" className="text-xs rounded-lg">
-            Active ({activeCards.length})
-          </TabsTrigger>
-          <TabsTrigger value="completed" className="text-xs rounded-lg">
-            Completed ({completedCards.length})
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="active" className="mt-3 space-y-2">
-          {isLoading ? (
-            <div className="text-center py-8 text-muted-foreground text-sm">Loading...</div>
-          ) : activeCards.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground text-sm">No active job cards</div>
-          ) : (
-            activeCards.map((card) => <JobCardItem key={card.id} card={card} />)
-          )}
-        </TabsContent>
-
-        <TabsContent value="completed" className="mt-3 space-y-2">
-          {completedCards.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground text-sm">No completed job cards</div>
-          ) : (
-            completedCards.map((card) => <JobCardItem key={card.id} card={card} />)
-          )}
-        </TabsContent>
-      </Tabs>
 
       {/* FAB - New Job Card */}
       <Button
-        className="fab h-14 w-14 rounded-2xl shadow-lg"
+        className="fixed bottom-6 right-4 h-14 w-14 rounded-2xl shadow-lg active:scale-95 transition-transform z-20"
         onClick={() => setShowAddDialog(true)}
       >
         <Plus className="h-6 w-6" />

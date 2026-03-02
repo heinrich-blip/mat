@@ -5,115 +5,69 @@ paths:
 
 # Car Craft Co Fleet Management Monorepo
 
-Three-app monorepo sharing Supabase backend:
-- **Dashboard** (`src/`): Back-office (Vite + React + TS)
-- **Workshop Mobile** (`mobile/src/`): Workshop staff (Vite + React + TS)  
-- **Driver App** (`mobile-app-nextjs/src/`): Drivers (Next.js + React)
+Three frontend apps sharing one Supabase backend:
 
-**Stack:** shadcn/ui, Tailwind, Supabase, TanStack Query v5, React Context, react-hook-form, zod
+| App              | Tech stack                  | Purpose              | Main folder              | Dev command                     |
+|------------------|-----------------------------|----------------------|--------------------------|---------------------------------|
+| Dashboard        | Vite + React + TS           | Back-office          | `src/`                   | `npm run dev`                   |
+| Workshop Mobile  | Vite + React + TS           | Workshop staff       | `mobile/src/`            | `cd mobile && npm run dev`      |
+| Driver App       | Next.js App Router + React  | Drivers              | `mobile-app-nextjs/src/` | `cd mobile-app-nextjs && npm run dev` |
 
-## Critical Rules
+**Shared stack:** shadcn/ui, Tailwind, Supabase, TanStack Query v5, React Context, react-hook-form + zod
 
-### 1. Imports & Aliases
-- **Always `@/`** — never `../../`
-- **Dashboard/Workshop:** `supabase` from `@/integrations/supabase/client`
-- **Driver App:** `supabase` from `@/lib/supabase/client`
+## Quick Rules – Read These First
 
-### 2. Type Regeneration (ALL 3 APPS)
-After every migration:
-```bash
-npx supabase gen types typescript --project-id wxvhkljrbcpcgpgdqhsp > src/integrations/supabase/types.ts
-npx supabase gen types typescript --project-id wxvhkljrbcpcgpgdqhsp > mobile/src/integrations/supabase/types.ts
-npx supabase gen types typescript --project-id wxvhkljrbcpcgpgdqhsp > mobile-app-nextjs/src/types/database.ts
-```
+1. **Imports**  
+   Always use `@/` alias — never `../` or `../../`
 
-### 3. Never Edit `components/ui/`
-Regenerate with shadcn CLI only.
+2. **Supabase client location**
 
-### 4. Real-time Cleanup Required
-```typescript
-const channel = supabase.channel('x').subscribe();
-return () => { supabase.removeChannel(channel); };
-```
+   | App              | Import path                                    |
+   |------------------|------------------------------------------------|
+   | Dashboard / Workshop | `import { supabase } from "@/integrations/supabase/client"` |
+   | Driver           | `import { supabase } from "@/lib/supabase/client"`          |
 
-### 5. Toast by App
-- **Dashboard/Workshop:** `useToast` from `@/hooks/use-toast`
-- **Driver:** `sonner` (`toast.success/error`)
+3. **Regenerate types after every migration** (same command, different output path)
 
-### 6. Layout Imports
-- Dashboard: `@/components/Layout`
-- Workshop: `@/components/mobile/WorkshopMobileLayout`
-- Driver: `@/components/layout/mobile-shell`
+   ```bash
+   npx supabase gen types typescript --project-id wxvhkljrbcpcgpgdqhsp \
+     > src/integrations/supabase/types.ts
+   npx supabase gen types typescript --project-id wxvhkljrbcpcgpgdqhsp \
+     > mobile/src/integrations/supabase/types.ts
+   npx supabase gen types typescript --project-id wxvhkljrbcpcgpgdqhsp \
+     > mobile-app-nextjs/src/types/database.ts
 
-### 7. Driver App = "use client"
-Required for interactive components in Next.js App Router.
+Real-time subscription cleanup (required)TypeScriptconst channel = supabase.channel('…').subscribe()
+return () => { supabase.removeChannel(channel) }
+ToastsAppHook / FunctionDashboard / WorkshopuseToast from @/hooks/use-toastDrivertoast from sonner
+Layout componentsAppImportDashboard@/components/LayoutWorkshop@/components/mobile/WorkshopMobileLayoutDriver@/components/layout/mobile-shell
+Driver App only — every interactive file needs "use client" at the top
 
-## Data Fetching Pattern
-
-```typescript
-const { data } = useQuery({
-  queryKey: ["table", filter], // Include ALL filters
+Recommended Data Flow (TanStack Query + Supabase)
+TypeScript// Query
+const { data, isLoading } = useQuery({
+  queryKey: ["vehicles", { status, search }],   // ← all filters go here!
   queryFn: async () => {
-    const { data, error } = await supabase.from("table").select("*");
+    const { data, error } = await supabase.from("vehicles").select("*")…;
     if (error) throw error;
     return data;
   },
 });
 
+// Mutation
 const mutation = useMutation({
-  mutationFn: async (newData) => {
-    const { data, error } = await supabase.from("table").insert([newData]).select().single();
-    if (error) throw error;
-    return data;
-  },
+  mutationFn: (payload) => supabase.from("vehicles").insert(payload).select().single(),
   onSuccess: () => {
-    queryClient.invalidateQueries({ queryKey: ["table"] });
-    toast({ title: "Success" });
+    queryClient.invalidateQueries({ queryKey: ["vehicles"] });
+    toast.success("Vehicle added");
   },
 });
-```
 
-## Key File Locations
 
-| Purpose | Dashboard/Workshop | Driver App |
-|---------|-------------------|------------|
-| Supabase client | `src/integrations/supabase/client.ts` | `src/lib/supabase/client.ts` |
-| Types | `src/integrations/supabase/types.ts` | `src/types/database.ts` |
-| Auth context | `src/contexts/AuthContext.tsx` | `src/contexts/auth-context.tsx` |
-| Toast hook | `src/hooks/use-toast.ts` | `src/hooks/use-toast.ts` |
+Common Gotchas
 
-## Project Structure
-
-```
-Dashboard/Workshop:          Driver App (Next.js):
-src/                         src/
-├── components/              ├── app/                 # Routes (page.tsx)
-│   ├── ui/                  ├── components/
-│   ├── dialogs/             │   ├── layout/          # mobile-shell.tsx
-│   ├── [feature]/           │   └── ui/
-│   └── Layout.tsx           ├── lib/supabase/
-├── pages/                   ├── contexts/
-├── hooks/                   └── types/
-├── contexts/
-├── integrations/supabase/
-├── constants/
-└── lib/
-```
-
-## Dev Commands
-
-```bash
-npm run dev                        # Dashboard
-cd mobile && npm run dev           # Workshop  
-cd mobile-app-nextjs && npm run dev # Driver
-```
-
-## Common Gotchas
-
-- **RLS enabled** on all tables — empty results = policy mismatch
-- **Query keys** must include all filters for proper invalidation
-- **Regenerate types** after every migration or face TS errors
-- **RPC params** prefix with `p_` (e.g., `p_inventory_id`)
-- **QR codes** for tyres/vehicles — see `TyreQRCodeSystem.tsx`
-```
-
+RLS enabled everywhere → empty data usually = policy / auth mismatch
+Query keys must contain every filter used (for correct invalidation)
+RPC parameters → prefix with p_ (Supabase convention)
+Never manually edit components/ui/* — regenerate with npx shadcn@latest add …
+QR code logic → see TyreQRCodeSystem.tsx

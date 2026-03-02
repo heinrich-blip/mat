@@ -68,6 +68,14 @@ const TyreWheel = ({ status, size = "md", isDual = false }: TyreWheelProps) => {
     lg: "w-12 h-16",
   };
 
+  const lastInspectionDate = status.tyreDetails?.lastInspectionDate
+    ? new Date(status.tyreDetails.lastInspectionDate)
+    : null;
+  const daysSinceInspection = lastInspectionDate && !isNaN(lastInspectionDate.getTime())
+    ? Math.floor((Date.now() - lastInspectionDate.getTime()) / (1000 * 60 * 60 * 24))
+    : null;
+  const recentlyInspected = typeof daysSinceInspection === "number" && daysSinceInspection <= 30;
+
   const getHealthColor = (healthStatus?: string) => {
     switch (healthStatus) {
       case "excellent": return "from-green-600 to-green-400 border-green-700";
@@ -142,6 +150,15 @@ const TyreWheel = ({ status, size = "md", isDual = false }: TyreWheelProps) => {
                 {getHealthIcon(status.tyreDetails.healthStatus)}
               </div>
             )}
+
+            {/* Recent inspection badge */}
+            {!isEmpty && recentlyInspected && (
+              <div className="absolute -bottom-2 left-0 z-20">
+                <Badge variant="secondary" className="px-1 py-0 text-[9px]">
+                  Inspected ≤30d
+                </Badge>
+              </div>
+            )}
           </div>
         </TooltipTrigger>
         <TooltipContent side="top" className="max-w-xs">
@@ -157,6 +174,11 @@ const TyreWheel = ({ status, size = "md", isDual = false }: TyreWheelProps) => {
                     {status.tyreDetails.currentTreadDepth && (
                       <p className="text-xs">Tread: {status.tyreDetails.currentTreadDepth}mm</p>
                     )}
+                    <p className="text-xs">
+                      Last inspection: {lastInspectionDate
+                        ? `${lastInspectionDate.toLocaleDateString()}${daysSinceInspection !== null ? ` (${daysSinceInspection}d ago)` : ""}`
+                        : "Not recorded"}
+                    </p>
                     <Badge variant="outline" className="text-[10px]">
                       {status.tyreDetails.healthStatus || "Unknown"}
                     </Badge>
@@ -921,6 +943,11 @@ const FleetTyreLayoutDiagram = ({ registrationNumber, fleetNumber }: FleetTyreLa
                           {status.tyreDetails.currentTreadDepth}mm
                         </span>
                       )}
+                      <div className="text-[10px] text-muted-foreground mt-0.5">
+                        {status.tyreDetails?.lastInspectionDate
+                          ? `Last insp: ${new Date(status.tyreDetails.lastInspectionDate).toLocaleDateString()}`
+                          : "No inspection recorded"}
+                      </div>
                     </div>
                   ) : (
                     <span className="text-muted-foreground italic">Empty</span>
