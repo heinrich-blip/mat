@@ -5,7 +5,7 @@ export async function proxy(request: NextRequest) {
   return await updateSession(request);
 }
 
-export default middleware;
+export default proxy;  // Fixed: was 'middleware'
 
 export const config = {
   matcher: [
