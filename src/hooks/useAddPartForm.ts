@@ -193,31 +193,10 @@ export function validateForm(state: FormState): ValidationError | null {
   if (state.quantity <= 0) {
     return { field: "quantity", message: "Quantity must be greater than 0" };
   }
-  if (state.unitPrice <= 0 && !(state.sourceType === "inventory" && state.selectedInventoryId && state.quantity > state.availableQuantity)) {
-    return { field: "unitPrice", message: "Unit price must be greater than 0" };
-  }
   if (state.sourceType === "service" && !state.serviceDescription.trim()) {
     return {
       field: "serviceDescription",
       message: "Service description is required for service items",
-    };
-  }
-  if (
-    (state.sourceType === "external" || state.sourceType === "service") &&
-    !state.selectedVendorId
-  ) {
-    return {
-      field: "vendor",
-      message: "Please select a vendor/service provider",
-    };
-  }
-  if (
-    (state.sourceType === "external" || state.sourceType === "service") &&
-    !state.irNumber.trim()
-  ) {
-    return {
-      field: "irNumber",
-      message: "IR number is required for external parts and services",
     };
   }
   if (state.sourceType === "inventory" && !state.selectedInventoryId) {
@@ -226,9 +205,28 @@ export function validateForm(state: FormState): ValidationError | null {
       message: "Please select an inventory item",
     };
   }
-  // Allow insufficient stock - item will flow to procurement as a request
   return null;
 }
+
+// Define a type for the parts request insert data
+type PartsRequestInsert = {
+  job_card_id: string;
+  part_name: string;
+  part_number: string | null;
+  quantity: number;
+  notes: string | null;
+  status: string;
+  unit_price: number | null;
+  total_price: number | null;
+  vendor_id: string | null;
+  ir_number: string | null;
+  is_service: boolean;
+  is_from_inventory: boolean;
+  service_description: string | null;
+  document_url: string | null;
+  document_name: string | null;
+  inventory_id: string | null;
+};
 
 export function useAddPartForm(
   jobCardId: string,
@@ -449,118 +447,90 @@ export function useAddPartForm(
             : repeatNote;
         }
 
-        // Check if item can be allocated directly from inventory
-        const hasSufficientStock = state.sourceType === "inventory" &&
-          !!state.selectedInventoryId &&
-          state.quantity <= state.availableQuantity;
-        
-        // Inventory items with sufficient stock: Allocate directly without creating procurement request
-        if (hasSufficientStock && state.selectedInventoryId) {
-          // Deduct from inventory
-          const newQuantity = state.availableQuantity - state.quantity;
-          const { error: invError } = await supabase
-            .from("inventory")
-            .update({ quantity: newQuantity })
-            .eq("id", state.selectedInventoryId);
-
-          if (invError) throw invError;
-
-          // Log allocation to job card (doesn't create procurement request)
-          const { error: txError } = await supabase
-            .from("inventory_transactions")
-            .insert([{
-              inventory_id: state.selectedInventoryId,
-              job_card_id: jobCardId,
-              transaction_type: "allocation",
-              quantity_change: -state.quantity,
-              quantity_before: state.availableQuantity,
-              quantity_after: newQuantity,
-              notes: finalNotes || `Allocated directly to job card`,
-              performed_by: null,
-            }]);
-
-          // Ignore if inventory_transactions doesn't exist
-          if (txError) console.warn("Inventory transaction logging failed:", txError);
-
-          toast({
-            title: "Success",
-            description: `Part allocated directly from inventory (${state.quantity} units)`,
-          });
-          
-          queryClient.invalidateQueries({ queryKey: ["inventory"] });
-          queryClient.invalidateQueries({ queryKey: ["job_card_parts", jobCardId] });
-          requestGoogleSheetsSync('workshop');
-          onSuccess();
-          onOpenChange(false);
-          return;
-        }
-
-        // For insufficient stock, external parts, or services: create procurement request
-        const isOutOfStock = state.sourceType === "inventory" &&
-          !!state.selectedInventoryId &&
-          state.quantity > state.availableQuantity;
-        if (isOutOfStock) {
-          const stockNote = `[OUT OF STOCK - needs procurement] Available: ${state.availableQuantity}, Requested: ${state.quantity}`;
-          finalNotes = finalNotes
-            ? `${stockNote}\n${finalNotes}`
-            : stockNote;
-        }
-
-        const insertData: Record<string, unknown> = {
+        // Prepare the insert data with proper typing
+        const insertData: PartsRequestInsert = {
           job_card_id: jobCardId,
           part_name: state.partName,
-          part_number:
-            state.sourceType === "service" ? null : state.partNumber || null,
+          part_number: state.sourceType === "service" ? null : (state.partNumber || null),
           quantity: state.quantity,
           notes: finalNotes,
           status: "pending",
-          // Procurement team will fill in price, vendor, and IR later
           unit_price: null,
           total_price: null,
           vendor_id: null,
           ir_number: null,
           is_service: state.sourceType === "service",
           is_from_inventory: state.sourceType === "inventory",
-          service_description:
-            state.sourceType === "service"
-              ? state.serviceDescription
-              : null,
+          service_description: state.sourceType === "service" ? state.serviceDescription : null,
           document_url: uploadedDocUrl,
           document_name: state.documentFile?.name || null,
-          inventory_id:
-            state.sourceType === "inventory"
-              ? state.selectedInventoryId || null
-              : null,
+          inventory_id: state.sourceType === "inventory" ? (state.selectedInventoryId || null) : null,
         };
 
-        const { error } = await supabase
+        // If it's an inventory item with sufficient stock, we can allocate directly
+        if (state.sourceType === "inventory" && 
+            state.selectedInventoryId && 
+            !hasInsufficientStock) {
+          
+          // Update inventory quantity
+          const newQuantity = Math.max(0, state.availableQuantity - state.quantity);
+          const { error: inventoryError } = await supabase
+            .from("inventory")
+            .update({ quantity: newQuantity })
+            .eq("id", state.selectedInventoryId);
+
+          if (inventoryError) {
+            console.error("Error updating inventory:", inventoryError);
+            throw inventoryError;
+          }
+
+          // Set status to approved since we're allocating from inventory
+          insertData.status = "approved";
+        }
+
+        // Create the parts request
+        const { error: insertError } = await supabase
           .from("parts_requests")
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .insert([insertData as any]);
+          .insert([insertData]);
 
-        if (error) throw error;
+        if (insertError) {
+          console.error("Error inserting parts request:", insertError);
+          throw insertError;
+        }
 
-        toast({
-          title: "Success",
-          description: isOutOfStock
-            ? `${state.sourceType === "service" ? "Service" : "Part"} request created — item is short/out of stock and sent to procurement`
-            : `${state.sourceType === "service" ? "Service" : "External part"} request sent to procurement`,
-        });
-        requestGoogleSheetsSync('workshop');
+        // Success message based on type
+        if (state.sourceType === "inventory" && !hasInsufficientStock) {
+          toast({
+            title: "Success",
+            description: `Part allocated from inventory (${state.quantity} units)`,
+          });
+        } else if (hasInsufficientStock) {
+          toast({
+            title: "Request Created",
+            description: "Part is out of stock - request sent to procurement",
+          });
+        } else {
+          toast({
+            title: "Success",
+            description: `${state.sourceType === "service" ? "Service" : "Part"} request submitted successfully`,
+          });
+        }
 
-        // Invalidate procurement cache so the new request appears immediately on the Procurement page
+        // Invalidate relevant queries
+        queryClient.invalidateQueries({ queryKey: ["inventory"] });
+        queryClient.invalidateQueries({ queryKey: ["job_card_parts", jobCardId] });
         queryClient.invalidateQueries({ queryKey: ["procurement-requests"] });
-
+        
+        requestGoogleSheetsSync('workshop');
         onSuccess();
         onOpenChange(false);
+        
       } catch (error) {
+        console.error("Error in handleSubmit:", error);
         toast({
           variant: "destructive",
           title: "Error",
-          description:
-            error instanceof Error
-              ? error.message
-              : "Failed to add part/service",
+          description: error instanceof Error ? error.message : "Failed to add part/service",
         });
       } finally {
         dispatch({ type: "SET_IS_SUBMITTING", payload: false });
@@ -575,6 +545,7 @@ export function useAddPartForm(
       onOpenChange,
       checkForRepeatedUsage,
       uploadDocument,
+      hasInsufficientStock,
     ]
   );
 

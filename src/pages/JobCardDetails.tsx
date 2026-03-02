@@ -106,9 +106,9 @@ const JobCardDetails = () => {
           vendors(id, name, email, phone),
           inventory(
             id,
-            name,
+            part_name,
             part_number,
-            quantity,
+            quantity_in_stock,
             unit_price,
             location,
             supplier

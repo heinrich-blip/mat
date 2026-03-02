@@ -55,7 +55,7 @@ function InventoryPartFormInner({
       <div className="space-y-2">
         <Label htmlFor="inventory-item">Select Inventory Item *</Label>
         <Select
-          value={selectedInventoryId || undefined}
+          value={selectedInventoryId || ""}
           onValueChange={(value) => {
             const selectedItem = inventoryItems.find(
               (item) => item.id === value

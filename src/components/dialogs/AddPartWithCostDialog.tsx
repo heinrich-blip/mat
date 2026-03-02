@@ -83,7 +83,7 @@ export default function AddPartWithCostDialog({
     [dispatch]
   );
 
-  const isProcessing = state.isSubmitting;
+  const isProcessing = state.isSubmitting || state.isUploading;
 
   return (
     <>
