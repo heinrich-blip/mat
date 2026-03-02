@@ -1,4 +1,3 @@
-
 import CorrectiveActionDialog from "@/components/dialogs/CorrectiveActionDialog";
 import { CreateWorkOrderFromInspectionDialog } from "@/components/dialogs/CreateWorkOrderFromInspectionDialog";
 import { RootCauseAnalysisDialog } from "@/components/dialogs/RootCauseAnalysisDialog";
@@ -55,7 +54,7 @@ interface InspectionData {
   notes: string | null;
   status: string;
   template_id?: string | null;
-  root_cause_analysis?: RootCauseAnalysis | null | unknown; // Can be Json from DB
+  root_cause_analysis?: RootCauseAnalysis | null | unknown;
   created_at: string | null;
   completed_at: string | null;
   completed_by: string | null;
@@ -134,6 +133,11 @@ const InspectionDetails = () => {
     enabled: !!id,
   });
 
+  // Calculate if there are any faults that need corrective action
+  const hasFaultsNeedingAction = faults.some(
+    fault => !fault.corrective_action_status || fault.corrective_action_status === 'pending'
+  );
+
   // Action handlers
   const handleView = () => {
     toast({
@@ -156,14 +160,23 @@ const InspectionDetails = () => {
     setShowCreateWorkOrder(true);
   };
 
+  // FIXED: Handle corrective action with proper fault checking
   const handleCorrectiveAction = () => {
-    if (faults.length === 0) {
+    // Check if there are any faults that need corrective action
+    const faultsNeedingAction = faults.filter(
+      fault => !fault.corrective_action_status || fault.corrective_action_status === 'pending'
+    );
+    
+    if (faultsNeedingAction.length === 0) {
       toast({
-        title: "No Faults Found",
-        description: "This inspection has no recorded faults",
+        title: "No Faults Requiring Action",
+        description: faults.length > 0 
+          ? "All faults have already been addressed" 
+          : "This inspection has no recorded faults",
       });
       return;
     }
+    
     setShowCorrectiveAction(true);
   };
 
@@ -266,6 +279,20 @@ const InspectionDetails = () => {
     }
   };
 
+  // Helper function to format corrective action status for display
+  const getCorrectiveActionDisplay = (status: string | null) => {
+    if (!status) return "None taken";
+    
+    switch (status) {
+      case "fixed":
+        return "Fixed";
+      case "pending":
+        return "Pending";
+      default:
+        return status;
+    }
+  };
+
   return (
     <Layout>
       <div className="space-y-6">
@@ -291,6 +318,7 @@ const InspectionDetails = () => {
             onViewPDF={handleViewPDF}
             onArchive={handleArchive}
             onDelete={handleDelete}
+            hasFaultsNeedingAction={hasFaultsNeedingAction}
           />
         </div>
 
@@ -487,18 +515,24 @@ const InspectionDetails = () => {
                           </Badge>
                         </div>
 
-                        {fault.corrective_action_status && (
-                          <>
-                            <Separator />
-                            <div className="space-y-1">
-                              <p className="text-sm font-medium">Corrective Action Status:</p>
-                              <Badge variant={fault.corrective_action_status === "fixed" ? "default" : "secondary"}>
-                                {fault.corrective_action_status}
-                              </Badge>
-                            </div>
-                          </>
-                        )}
+                        {/* FIXED: Always show corrective action status with proper display */}
+                        <>
+                          <Separator />
+                          <div className="space-y-1">
+                            <p className="text-sm font-medium">Corrective Action Status:</p>
+                            <Badge 
+                              variant={
+                                fault.corrective_action_status === "fixed" 
+                                  ? "default" 
+                                  : "secondary"
+                              }
+                            >
+                              {getCorrectiveActionDisplay(fault.corrective_action_status)}
+                            </Badge>
+                          </div>
+                        </>
 
+                        {/* Show notes if they exist */}
                         {fault.corrective_action_notes && (
                           <div className="space-y-1">
                             <p className="text-sm font-medium">Notes:</p>
@@ -550,7 +584,7 @@ const InspectionDetails = () => {
         )}
       </div>
 
-      {/* Corrective Action Dialog */}
+      {/* Corrective Action Dialog - Only render if there are faults */}
       {faults.length > 0 && (
         <CorrectiveActionDialog
           open={showCorrectiveAction}

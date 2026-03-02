@@ -10,6 +10,7 @@ import { formatDate, formatNumber } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, Calendar, Clock, MapPin } from "lucide-react";
 import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 interface Vehicle {
   id: string;
@@ -20,19 +21,21 @@ interface Vehicle {
 }
 
 // Trip entry from main dashboard (trips table)
-interface TripEntry {
+export interface TripEntry {
   id: string;
   trip_number: string | null;
   vehicle_id: string | null;
-  fleet_vehicle_id: string | null; // Direct link to vehicles table
+  fleet_vehicle_id: string | null;
   origin: string | null;
   destination: string | null;
   departure_date: string | null;
   arrival_date: string | null;
   driver_name: string | null;
   client_name: string | null;
-  distance_km: number | null;  starting_km: number | null;
-  ending_km: number | null;  base_revenue: number | null;
+  distance_km: number | null;
+  starting_km: number | null;
+  ending_km: number | null;
+  base_revenue: number | null;
   invoice_amount: number | null;
   status: string | null;
   created_at: string | null;
@@ -51,9 +54,48 @@ interface FreightDetail {
   trip_id: string;
 }
 
+// Tracker record interface
+interface TrackerRecord {
+  trip_id: string;
+  current_phase: number;
+  is_completed: boolean;
+}
+
 // Import the TripDetailSheet component
 import { TripDetailSheet } from "@/components/trip-detail-sheet";
-import { StatCard, LoadingSpinner, EmptyState } from "@/components/trip-link-form";
+
+// StatCard component
+function StatCard({ label, value }: { label: string; value: string | number }) {
+  return (
+    <Card>
+      <CardContent className="p-3 text-center">
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <p className="text-lg font-semibold">{value}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+// LoadingSpinner component
+function LoadingSpinner() {
+  return (
+    <div className="flex justify-center items-center py-8">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+    </div>
+  );
+}
+
+// EmptyState component
+function EmptyState({ title, description }: { title: string; description: string }) {
+  return (
+    <Card>
+      <CardContent className="p-8 text-center text-muted-foreground">
+        <p className="font-medium">{title}</p>
+        <p className="text-sm mt-1">{description}</p>
+      </CardContent>
+    </Card>
+  );
+}
 
 // Helper to get month options (current + past 11 months)
 function getMonthOptions() {
@@ -75,14 +117,14 @@ export default function TripsPage() {
   const { user } = useAuth();
   const supabase = createClient();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   // Month selector state
   const monthOptions = getMonthOptions();
   const [selectedMonth, setSelectedMonth] = useState(monthOptions[0].value);
 
-  // State for trip link form
+  // State for trip detail sheet
   const [selectedTrip, setSelectedTrip] = useState<TripEntry | null>(null);
-  const [showTripForm, setShowTripForm] = useState(false);
 
   // Parse selected month to get date range
   const selectedMonthData = monthOptions.find(m => m.value === selectedMonth) || monthOptions[0];
@@ -99,10 +141,10 @@ export default function TripsPage() {
   };
 
   // Fetch assigned vehicle from driver_vehicle_assignments
-  const { data: assignedVehicle } = useQuery({
+  const { data: assignedVehicle, isLoading: isLoadingVehicle } = useQuery({
     queryKey: ["assigned-vehicle", user?.id],
     queryFn: async () => {
-      if (!user?.id) return null;
+      if (!user?.id) throw new Error("User not authenticated");
 
       const { data, error } = await supabase
         .from("driver_vehicle_assignments")
@@ -133,12 +175,21 @@ export default function TripsPage() {
       return null;
     },
     enabled: !!user?.id,
-    staleTime: 10 * 60 * 1000, // 10 min - assignment doesn't change often
+    staleTime: 10 * 60 * 1000, // 10 min
   });
 
-  // Fetch trips for current month - linked directly via fleet_vehicle_id
-  const { data: monthlyTrips = [], isLoading: isLoadingTrips } = useQuery({
-    queryKey: ["monthly-trips", assignedVehicle?.id, firstDayOfMonth],
+  // Handle vehicle query error with useEffect
+  if (assignedVehicle === undefined && !isLoadingVehicle) {
+    toast({
+      title: "Error",
+      description: "Failed to fetch assigned vehicle. Please try again.",
+      variant: "destructive",
+    });
+  }
+
+  // Fetch trips for current month
+  const { data: monthlyTrips = [], isLoading: isLoadingTrips } = useQuery<TripEntry[]>({
+    queryKey: ["monthly-trips", assignedVehicle?.id, selectedMonth],
     queryFn: async () => {
       if (!assignedVehicle?.id) return [];
 
@@ -177,8 +228,17 @@ export default function TripsPage() {
     enabled: !!assignedVehicle?.id,
   });
 
-  // Fetch existing freight details for all trips (lightweight - just need trip_id for mapping)
-  const { data: freightDetails = [], isLoading: isLoadingFreight } = useQuery({
+  // Handle trips query error
+  if (monthlyTrips === undefined && !isLoadingTrips) {
+    toast({
+      title: "Error",
+      description: "Failed to fetch trips. Please pull to refresh.",
+      variant: "destructive",
+    });
+  }
+
+  // Fetch existing freight details for all trips
+  const { data: freightDetails = [], isLoading: isLoadingFreight } = useQuery<FreightDetail[]>({
     queryKey: ["freight-details", assignedVehicle?.id, user?.id],
     queryFn: async () => {
       if (!assignedVehicle?.id || !user?.id) return [];
@@ -189,16 +249,25 @@ export default function TripsPage() {
         .eq("vehicle_id", assignedVehicle.id)
         .eq("driver_id", user.id);
 
-      if (error) return [];
+      if (error) throw error;
       return (data || []) as FreightDetail[];
     },
     enabled: !!assignedVehicle?.id && !!user?.id,
   });
 
-  // Fetch cycle tracker existence for all trips (lightweight)
+  // Handle freight query error
+  if (freightDetails === undefined && !isLoadingFreight) {
+    toast({
+      title: "Error",
+      description: "Failed to fetch freight details.",
+      variant: "destructive",
+    });
+  }
+
+  // Fetch cycle tracker existence for all trips
   const tripIds = monthlyTrips.map(t => t.id);
-  const { data: trackerRecords = [] } = useQuery({
-    queryKey: ["cycle-tracker-exists", tripIds.join(",")],
+  const { data: trackerRecords = [] } = useQuery<TrackerRecord[]>({
+    queryKey: ["cycle-tracker-exists", tripIds],
     queryFn: async () => {
       if (tripIds.length === 0) return [];
       const { data, error } = await supabase
@@ -206,26 +275,35 @@ export default function TripsPage() {
         .select("trip_id, current_phase, is_completed")
         .in("trip_id", tripIds);
 
-      if (error) return [];
-      return (data || []) as { trip_id: string; current_phase: number; is_completed: boolean }[];
+      if (error) throw error;
+      return (data || []) as TrackerRecord[];
     },
     enabled: tripIds.length > 0,
   });
 
+  // Handle tracker query error
+  if (trackerRecords === undefined && tripIds.length > 0) {
+    toast({
+      title: "Error",
+      description: "Failed to fetch trip trackers.",
+      variant: "destructive",
+    });
+  }
+
   // Create tracker map for quick lookup
-  const trackerMap = trackerRecords.reduce((acc, t) => {
+  const trackerMap = trackerRecords.reduce((acc: Record<string, TrackerRecord>, t) => {
     acc[t.trip_id] = t;
     return acc;
-  }, {} as Record<string, { trip_id: string; current_phase: number; is_completed: boolean }>);
+  }, {});
 
   // Create a map for quick lookup of freight by trip_id
-  const _freightMap = freightDetails.reduce((acc, freight) => {
+  const freightMap = freightDetails.reduce((acc: Record<string, FreightDetail>, freight) => {
     acc[freight.trip_id] = freight;
     return acc;
-  }, {} as Record<string, FreightDetail>);
+  }, {});
 
   // Show ALL trips
-  const allTrips = monthlyTrips;
+  const allTrips = monthlyTrips || [];
   const totalTrips = allTrips.length;
   const totalDistanceKm = allTrips.reduce((sum, e) => sum + (e.distance_km || 0), 0);
   const completedTrips = allTrips.filter(t => t.status === 'completed').length;
@@ -233,10 +311,23 @@ export default function TripsPage() {
   // Handler to open trip detail
   const handleOpenTripDetail = (trip: TripEntry) => {
     setSelectedTrip(trip);
-    setShowTripForm(true);
   };
 
-  const isLoading = isLoadingTrips || isLoadingFreight;
+  const isLoading = isLoadingVehicle || isLoadingTrips || isLoadingFreight;
+
+  // No vehicle assigned state
+  if (!isLoading && !assignedVehicle) {
+    return (
+      <MobileShell>
+        <div className="p-5 space-y-6 min-h-screen flex flex-col items-center justify-center text-center">
+          <EmptyState 
+            title="No Vehicle Assigned"
+            description="Please contact your administrator to get a vehicle assigned."
+          />
+        </div>
+      </MobileShell>
+    );
+  }
 
   return (
     <MobileShell>
@@ -272,29 +363,33 @@ export default function TripsPage() {
             {isLoading ? (
               <LoadingSpinner />
             ) : allTrips.length === 0 ? (
-              <EmptyState />
+              <EmptyState 
+                title="No Trips Found"
+                description={`No trips available for ${monthName}. Try selecting another month.`}
+              />
             ) : (
               allTrips.map((entry) => (
                 <TripCard 
                   key={entry.id} 
                   entry={entry} 
                   tracker={trackerMap[entry.id]}
+                  hasFreight={!!freightMap[entry.id]}
                   onOpenDetail={() => handleOpenTripDetail(entry)}
                 />
               ))
             )}
           </div>
-
-          {/* Trip Detail Sheet */}
-          {selectedTrip && (
-            <TripDetailSheet
-              trip={selectedTrip}
-              open={showTripForm}
-              onOpenChange={setShowTripForm}
-            />
-          )}
         </div>
       </PullToRefresh>
+
+      {/* Trip Detail Sheet - Fixed to use 'trip' prop instead of 'tripId' */}
+      {selectedTrip && (
+        <TripDetailSheet
+          trip={selectedTrip}
+          open={!!selectedTrip}
+          onOpenChange={(open: boolean) => !open && setSelectedTrip(null)}
+        />
+      )}
     </MobileShell>
   );
 }
@@ -303,10 +398,12 @@ export default function TripsPage() {
 function TripCard({ 
   entry, 
   tracker,
+  hasFreight,
   onOpenDetail 
 }: { 
   entry: TripEntry; 
-  tracker?: { current_phase: number; is_completed: boolean };
+  tracker?: TrackerRecord;
+  hasFreight: boolean;
   onOpenDetail: () => void;
 }) {
   const statusColor = entry.status === "completed"
@@ -350,9 +447,16 @@ function TripCard({
           <span>
             {entry.distance_km ? `${formatNumber(entry.distance_km)} km` : "Distance N/A"}
           </span>
-          <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${statusColor}`}>
-            {entry.status || "pending"}
-          </span>
+          <div className="flex items-center gap-2">
+            {hasFreight && (
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-yellow-500/15 text-yellow-400">
+                Freight Linked
+              </span>
+            )}
+            <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${statusColor}`}>
+              {entry.status || "pending"}
+            </span>
+          </div>
         </div>
       </CardContent>
     </Card>

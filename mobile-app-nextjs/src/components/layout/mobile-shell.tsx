@@ -56,20 +56,9 @@ export function MobileShell({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="flex flex-col items-center gap-6">
-          {/* Modern animated loader */}
-          <div className="relative">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-violet-600 animate-pulse shadow-xl shadow-violet-500/30" />
-            <div className="absolute inset-0 w-16 h-16 rounded-2xl border-2 border-white/20 animate-ping" />
-          </div>
-          <div className="flex flex-col items-center gap-2">
-            <p className="text-foreground font-semibold">Loading</p>
-            <div className="flex gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-violet-500 animate-bounce" style={{ animationDelay: '0ms' }} />
-              <span className="w-1.5 h-1.5 rounded-full bg-violet-500 animate-bounce" style={{ animationDelay: '150ms' }} />
-              <span className="w-1.5 h-1.5 rounded-full bg-violet-500 animate-bounce" style={{ animationDelay: '300ms' }} />
-            </div>
-          </div>
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-10 h-10 rounded-xl bg-primary animate-pulse" />
+          <p className="text-muted-foreground text-sm font-medium">Loading…</p>
         </div>
       </div>
     );
@@ -79,8 +68,8 @@ export function MobileShell({
     <div className="flex flex-col min-h-screen bg-background">
       <main
         className={cn(
-          "flex-1 overflow-y-auto safe-area-top scrollbar-hide",
-          showNav && "pb-28",
+          "flex-1 overflow-y-auto safe-area-top scrollbar-hide px-4 sm:px-5",
+          showNav && "pb-32",
           className
         )}
       >

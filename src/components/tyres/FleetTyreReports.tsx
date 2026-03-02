@@ -6,7 +6,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useFleetNumbers } from "@/hooks/useFleetNumbers";
 import { supabase } from "@/integrations/supabase/client";
-import type { Database } from "@/integrations/supabase/types";
 import { useQuery } from "@tanstack/react-query";
 import jsPDF from "jspdf";
 import { Progress } from "@/components/ui/progress";
@@ -15,7 +14,67 @@ import { useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import * as XLSX from "xlsx";
 
-type Tyre = Database["public"]["Tables"]["tyres"]["Row"];
+// Local type definitions
+type Tyre = {
+  id: string;
+  created_at: string;
+  updated_at: string | null;
+  serial_number: string | null;
+  brand: string | null;
+  model: string | null;
+  size: string | null;
+  type: string | null;
+  position: string | null;
+  current_fleet_position: string | null;
+  current_tread_depth: number | null;
+  initial_tread_depth: number | null;
+  km_travelled: number | null;
+  condition: string | null;
+  purchase_date: string | null;
+  purchase_cost_zar: number | null;
+  notes: string | null;
+  last_inspection_date: string | null;
+  retread_count: number | null;
+  last_rotation_date: string | null;
+  rotation_due_km: number | null;
+  temperature_reading: number | null;
+  pressure_reading: number | null;
+  last_pressure_check: string | null;
+  vehicle_id: string | null;
+  supplier: string | null;
+  warranty_months: number | null;
+  warranty_km: number | null;
+};
+
+type EnrichedTyre = Tyre & {
+  fleet_number: string;
+  fleet_position: string;
+  registration_no: string | null;
+};
+
+// Types for recommendation engine
+type TyreGroup = {
+  brand: string;
+  model: string | null;
+  size: string | null;
+  tyres: EnrichedTyre[];
+  totalKm: number;
+  totalCost: number;
+  failures: number;
+};
+
+type TyreRecommendation = {
+  brand: string;
+  model: string | null;
+  size: string | null;
+  expectedLifespan: number;
+  costPerKm: number;
+  suitabilityScore: number;
+  avgKmTravelled: number;
+  tyreCount: number;
+  avgCost: number;
+  failureRate: number;
+};
 
 const FleetTyreReports = () => {
   const [selectedFleet, setSelectedFleet] = useState("all");
@@ -63,7 +122,7 @@ const FleetTyreReports = () => {
       if (tyresError) throw tyresError;
 
       // Merge position data with tyre details
-      const tyreMap = new Map((tyresData || []).map(t => [t.id, t]));
+      const tyreMap = new Map((tyresData || []).map(t => [t.id, t as unknown as Tyre]));
       
       return (positions || [])
         .filter(p => p.tyre_code && tyreMap.has(p.tyre_code))
@@ -72,15 +131,14 @@ const FleetTyreReports = () => {
           fleet_number: p.fleet_number,
           fleet_position: p.position,
           registration_no: p.registration_no,
-        }));
+        })) as EnrichedTyre[];
     },
   });
 
   // Use installedTyres for all analytics (tyres currently on vehicles)
-  const tyres = installedTyres as (Tyre & { fleet_number: string; fleet_position: string; registration_no: string })[];
+  const tyres = installedTyres;
 
-  // Fleet Health Summary calculations - using 'condition' field which matches Vehicle Store
-  // Maps: excellent->Excellent, good->Good, fair->Warning, poor/needs_replacement->Critical
+  // Fleet Health Summary calculations
   const healthStats = {
     excellent: tyres.filter((t) => t.condition === 'excellent').length,
     good: tyres.filter((t) => t.condition === 'good').length,
@@ -93,24 +151,6 @@ const FleetTyreReports = () => {
   const avgCostPerTyre = totalPurchaseCost / (tyres.length || 1);
   const avgKmPerTyre = tyres.reduce((sum, t) => sum + (t.km_travelled || 0), 0) / (tyres.length || 1);
   const costPerKm = avgCostPerTyre / (avgKmPerTyre || 1);
-
-  // Position wear patterns - using fleet_position from fleet_tyre_positions
-  const positionGroups = tyres.reduce((acc, tyre) => {
-    const pos = tyre.fleet_position || 'unknown';
-    if (!acc[pos]) {
-      acc[pos] = { tyres: [], totalKm: 0 };
-    }
-    acc[pos].tyres.push(tyre);
-    acc[pos].totalKm += tyre.km_travelled || 0;
-    return acc;
-  }, {} as Record<string, { tyres: typeof tyres, totalKm: number }>);
-
-  const _positionWearData = Object.entries(positionGroups).map(([position, data]) => ({
-    position,
-    avgKm: data.totalKm / data.tyres.length,
-    tyresUsed: data.tyres.length,
-    avgDays: 0, // Not available without history data
-  }));
 
   // Brand distribution for pie chart
   const brandDistribution = useMemo(() => {
@@ -173,7 +213,6 @@ const FleetTyreReports = () => {
         totalKm: data.totalKm,
         avgCostPerKm: data.totalKm > 0 ? data.totalCost / data.totalKm : null,
         totalMmWorn: data.totalMmWorn,
-        // KM per MM worn - efficiency metric (higher = better, more km per mm of tread lost)
         kmPerMm: data.totalMmWorn > 0 ? data.totalKm / data.totalMmWorn : null,
       }))
       .sort((a, b) => b.totalCost - a.totalCost);
@@ -206,30 +245,7 @@ const FleetTyreReports = () => {
   }, [tyres]);
 
   // Recommendation engine analysis
-  const recommendations = useMemo(() => {
-    interface TyreGroup {
-      brand: string;
-      model: string;
-      size: string;
-      tyres: Tyre[];
-      totalKm: number;
-      totalCost: number;
-      failures: number;
-    }
-
-    interface TyreRecommendation {
-      brand: string;
-      model: string;
-      size: string;
-      expectedLifespan: number;
-      costPerKm: number;
-      suitabilityScore: number;
-      avgKmTravelled: number;
-      tyreCount: number;
-      avgCost: number;
-      failureRate: number;
-    }
-
+  const recommendations = useMemo((): TyreRecommendation[] => {
     // Group tyres by brand/model/size
     const tyreGroups = tyres.reduce<Record<string, TyreGroup>>((acc, tyre) => {
       // Filter by fleet if selected (already filtered in query, but double-check)
@@ -242,12 +258,12 @@ const FleetTyreReports = () => {
         if (tyrePos !== selectedPosition) return acc;
       }
 
-      const key = `${tyre.brand}-${tyre.model}-${tyre.size}`;
+      const key = `${tyre.brand || 'Unknown'}-${tyre.model || 'Unknown'}-${tyre.size || 'Unknown'}`;
       if (!acc[key]) {
         acc[key] = {
-          brand: tyre.brand,
-          model: tyre.model,
-          size: tyre.size,
+          brand: tyre.brand || 'Unknown',
+          model: tyre.model || null,
+          size: tyre.size || null,
           tyres: [],
           totalKm: 0,
           totalCost: 0,
@@ -305,7 +321,7 @@ const FleetTyreReports = () => {
     return <Badge variant="destructive">Poor</Badge>;
   };
 
-  // Export to PDF - aligned with Google Sheets integration
+  // Export to PDF
   const exportToPDF = () => {
     const doc = new jsPDF();
     const title = `Fleet Tyre Report - ${selectedFleet === 'all' ? 'All Fleets' : selectedFleet}`;
@@ -391,7 +407,7 @@ const FleetTyreReports = () => {
     doc.save(`fleet-tyre-report-${selectedFleet}-${Date.now()}.pdf`);
   };
 
-  // Export to Excel - aligned with Google Sheets integration
+  // Export to Excel
   const exportToExcel = () => {
     // Sheet 1: Individual Tyres
     const tyresData = tyres.map((t) => {
@@ -421,7 +437,7 @@ const FleetTyreReports = () => {
       };
     });
 
-    // Sheet 2: Brand Summary (matches Google Sheets format)
+    // Sheet 2: Brand Summary
     const brandData = brandSummary.map((d) => ({
       'Brand': d.brand,
       'Count': d.count,
@@ -458,7 +474,7 @@ const FleetTyreReports = () => {
     XLSX.writeFile(workbook, `fleet-tyres-${selectedFleet}-${Date.now()}.xlsx`);
   };
 
-  // Get badge for tyre condition (matches Vehicle Store values)
+  // Get badge for tyre condition
   const getConditionBadge = (condition: string | null) => {
     const displayMap: Record<string, { label: string; variant: "default" | "destructive" | "secondary" | "outline" }> = {
       excellent: { label: "Excellent", variant: "default" },
@@ -467,7 +483,7 @@ const FleetTyreReports = () => {
       poor: { label: "Poor", variant: "destructive" },
       needs_replacement: { label: "Needs Replacement", variant: "destructive" },
     };
-    const info = displayMap[condition || ''] || { label: condition || 'Unknown', variant: "outline" as const };
+    const info = displayMap[condition || ''] || { label: condition || 'Unknown', variant: "outline" };
     return <Badge variant={info.variant}>{info.label}</Badge>;
   };
 
@@ -739,7 +755,7 @@ const FleetTyreReports = () => {
                     <CardTitle className="text-sm">Good</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-3xl font-bold text-success">{healthStats.good}</div>
+                    <div className="text-3xl font-bold text-green-600">{healthStats.good}</div>
                   </CardContent>
                 </Card>
                 <Card>
@@ -747,7 +763,7 @@ const FleetTyreReports = () => {
                     <CardTitle className="text-sm">Warning</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-3xl font-bold text-warning">{healthStats.warning}</div>
+                    <div className="text-3xl font-bold text-yellow-600">{healthStats.warning}</div>
                   </CardContent>
                 </Card>
                 <Card>
@@ -755,7 +771,7 @@ const FleetTyreReports = () => {
                     <CardTitle className="text-sm">Critical</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-3xl font-bold text-destructive">{healthStats.critical}</div>
+                    <div className="text-3xl font-bold text-red-600">{healthStats.critical}</div>
                   </CardContent>
                 </Card>
               </div>
@@ -810,7 +826,7 @@ const FleetTyreReports = () => {
                         <SelectValue placeholder="Filter by position" />
                       </SelectTrigger>
                       <SelectContent>
-                        {positions.map((pos: string) => (
+                        {positions.map((pos) => (
                           <SelectItem key={pos} value={pos}>
                             {pos === "all" ? "All Positions" : `Position ${pos}`}
                           </SelectItem>
@@ -939,8 +955,6 @@ const FleetTyreReports = () => {
                 </Card>
               </div>
             </TabsContent>
-
-
           </Tabs>
         </CardContent>
       </Card>

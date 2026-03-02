@@ -14,10 +14,7 @@ import
     EyeOff,
     Lock,
     LogIn,
-    Mail,
-    Shield,
-    Sparkles,
-    Truck
+    Mail
   } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -100,43 +97,6 @@ export default function LoginPage() {
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 relative z-10">
-        {/* Logo & Brand Section */}
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="flex flex-col items-center mb-10"
-        >
-          <div className="relative">
-            <div className="absolute inset-0 w-20 h-20 rounded-2xl bg-gradient-to-br from-violet-500 to-violet-600 blur-xl opacity-60" />
-            <div className="relative w-20 h-20 rounded-2xl bg-gradient-to-br from-violet-500 to-violet-600 flex items-center justify-center mb-4 shadow-2xl shadow-violet-500/40">
-              <Truck className="w-10 h-10 text-white" strokeWidth={2} />
-            </div>
-            <motion.div
-              className="absolute -top-2 -right-2"
-              animate={{ rotate: 360 }}
-              transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-            >
-              <Sparkles className="w-6 h-6 text-amber-500" fill="currentColor" />
-            </motion.div>
-          </div>
-
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.2 }}
-            className="text-center"
-          >
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-violet-400 via-violet-500 to-blue-400 bg-clip-text text-transparent">
-              Matanuska
-            </h1>
-            <p className="text-sm text-muted-foreground mt-2 flex items-center justify-center gap-1.5">
-              <Shield className="w-3.5 h-3.5" />
-              Fleet Management Portal
-            </p>
-          </motion.div>
-        </motion.div>
-
         {/* Login Form */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -328,7 +288,6 @@ export default function LoginPage() {
           >
             <div className="text-center">
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-violet-600 animate-pulse shadow-xl shadow-violet-500/40 mx-auto mb-4 flex items-center justify-center">
-                <Truck className="w-8 h-8 text-white" />
               </div>
               <p className="text-lg font-semibold">Authenticating...</p>
               <p className="text-sm text-muted-foreground mt-2">

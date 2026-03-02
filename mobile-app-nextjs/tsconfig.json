@@ -18,8 +18,7 @@
     "incremental": true,
     "types": [
       "node",
-      "react",
-      "react-dom"
+      "react"  // 👈 Add this line
     ],
     "plugins": [
       {

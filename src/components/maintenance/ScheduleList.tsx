@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { format } from "date-fns";
 import { MaintenanceSchedule } from "@/types/maintenance";
 import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { calculateKmStatus, getVehicleLatestKm } from "@/lib/maintenanceKmTracking";
+import { getFleetSubcategory, type FleetSubcategory } from "@/utils/fleetCategories";
 import { Progress } from "@/components/ui/progress";
 import {
   Table,
@@ -15,8 +17,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Eye, Calendar, AlertTriangle, FileText, FileSpreadsheet } from "lucide-react";
+import { Eye } from "lucide-react";
 import { ScheduleDetailsDialog } from "./ScheduleDetailsDialog";
 import { exportSchedulesToPDF, exportSchedulesToExcel } from "@/lib/maintenanceExport";
 import { useToast } from "@/hooks/use-toast";
@@ -27,219 +28,262 @@ interface ScheduleListProps {
   showOverdueOnly?: boolean;
 }
 
+type SubcategoryFilter = FleetSubcategory | "all";
+
 export function ScheduleList({ schedules, onUpdate, showOverdueOnly }: ScheduleListProps) {
   const [selectedSchedule, setSelectedSchedule] = useState<MaintenanceSchedule | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [priorityFilter, setPriorityFilter] = useState<string>("all");
-  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [priorityFilter, setPriorityFilter] = useState("all");
+  const [subcategoryFilter, setSubcategoryFilter] = useState<SubcategoryFilter>("all");
   const { toast } = useToast();
 
-  // Fetch latest KM for vehicles with KM-based schedules (from trips + current_odometer)
-  const vehicleIds = [...new Set(schedules.filter(s => s.odometer_based && s.vehicle_id).map(s => s.vehicle_id!))];
+  /* ---------------------------------------------
+     VEHICLE LOOKUPS
+  --------------------------------------------- */
+
+  const vehicleIds = useMemo(
+    () => [...new Set(schedules.filter(s => s.vehicle_id).map(s => s.vehicle_id!))],
+    [schedules]
+  );
+
+  const { data: vehicleFleetMap = {} } = useQuery({
+    queryKey: ["vehicle-fleet-map", vehicleIds],
+    queryFn: async () => {
+      if (!vehicleIds.length) return {};
+      const { data } = await supabase
+        .from("vehicles")
+        .select("id, fleet_number")
+        .in("id", vehicleIds);
+
+      const map: Record<string, string> = {};
+      data?.forEach(v => (map[v.id] = v.fleet_number || ""));
+      return map;
+    },
+    enabled: vehicleIds.length > 0,
+  });
+
   const { data: vehicleOdometers = {} } = useQuery({
-    queryKey: ["vehicle-odometers-from-trips", vehicleIds],
+    queryKey: ["vehicle-odometers", vehicleIds],
     queryFn: () => getVehicleLatestKm(vehicleIds),
     enabled: vehicleIds.length > 0,
   });
 
-  const filteredSchedules = schedules.filter(schedule => {
-    const matchesSearch = schedule.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      schedule.maintenance_type.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesPriority = priorityFilter === "all" || schedule.priority === priorityFilter;
-    const matchesCategory = categoryFilter === "all" || schedule.category === categoryFilter;
-    
-    return matchesSearch && matchesPriority && matchesCategory;
-  });
+  /* ---------------------------------------------
+     ENRICHED MODEL
+  --------------------------------------------- */
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'critical':
-        return 'destructive';
-      case 'high':
-        return 'default';
-      case 'medium':
-        return 'secondary';
-      case 'low':
-        return 'outline';
-      default:
-        return 'secondary';
-    }
-  };
+  const enriched = useMemo(() => {
+    return schedules
+      .map(schedule => {
+        const fleetNumber = schedule.vehicle_id
+          ? vehicleFleetMap[schedule.vehicle_id] || ""
+          : "";
 
-  const getDaysUntilDue = (dueDate: string | null) => {
-    if (!dueDate) return null;
-    const today = new Date();
-    const due = new Date(dueDate);
-    const diffTime = due.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays;
-  };
+        const subcategory = getFleetSubcategory(fleetNumber);
+        const isReefer = subcategory === "REEFERS";
+
+        const today = new Date();
+        const dueDate = schedule.next_due_date ? new Date(schedule.next_due_date) : null;
+        const daysUntilDue = dueDate
+          ? Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+          : null;
+
+        let status = "Scheduled";
+        let progressPercent = 0;
+        let label = "";
+
+        if (schedule.odometer_based && schedule.vehicle_id && schedule.odometer_interval_km) {
+          const last = schedule.last_odometer_reading || 0;
+
+          if (isReefer) {
+            const current = 0; // hook for reefer hours map if needed
+            const remaining = last + schedule.odometer_interval_km - current;
+            progressPercent = Math.min(
+              ((current - last) / schedule.odometer_interval_km) * 100,
+              100
+            );
+
+            if (remaining < 0) status = "Overdue";
+            else if (remaining <= schedule.odometer_interval_km * 0.15) status = "Due Soon";
+
+            label =
+              remaining < 0
+                ? `${Math.abs(remaining).toLocaleString()} hrs overdue`
+                : `${remaining.toLocaleString()} hrs remaining`;
+          } else {
+            const current = vehicleOdometers[schedule.vehicle_id] || 0;
+            const km = calculateKmStatus(
+              schedule.odometer_interval_km,
+              last,
+              current
+            );
+
+            progressPercent = km.progressPercent;
+            status = km.isOverdue
+              ? "Overdue"
+              : km.isApproaching
+              ? "Due Soon"
+              : "Scheduled";
+
+            label = km.isOverdue
+              ? `${Math.abs(km.remainingKm).toLocaleString()} km overdue`
+              : `${km.remainingKm.toLocaleString()} km remaining`;
+          }
+        } else if (daysUntilDue !== null) {
+          if (daysUntilDue < 0) status = "Overdue";
+          else if (daysUntilDue === 0) status = "Due Today";
+          else if (daysUntilDue <= 7) status = "Due Soon";
+
+          label = dueDate ? format(dueDate, "MMM dd, yyyy") : "";
+        }
+
+        return {
+          ...schedule,
+          fleetNumber,
+          subcategory,
+          status,
+          progressPercent,
+          label,
+        };
+      })
+      .filter(s => {
+        const matchesSearch =
+          s.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          s.maintenance_type.toLowerCase().includes(searchTerm.toLowerCase());
+
+        const matchesPriority =
+          priorityFilter === "all" || s.priority === priorityFilter;
+
+        const matchesSubcategory =
+          subcategoryFilter === "all" || s.subcategory === subcategoryFilter;
+
+        if (showOverdueOnly) return s.status === "Overdue";
+
+        return matchesSearch && matchesPriority && matchesSubcategory;
+      });
+  }, [schedules, vehicleFleetMap, vehicleOdometers, searchTerm, priorityFilter, subcategoryFilter, showOverdueOnly]);
+
+  /* ---------------------------------------------
+     GROUPED VIEW
+  --------------------------------------------- */
+
+  const grouped = useMemo(() => {
+    const map: Record<string, typeof enriched> = {};
+    enriched.forEach(s => {
+      if (!map[s.subcategory]) map[s.subcategory] = [];
+      map[s.subcategory].push(s);
+    });
+    return map;
+  }, [enriched]);
+
+  /* ---------------------------------------------
+     RENDER
+  --------------------------------------------- */
 
   return (
-    <div className="space-y-4">
-      <div className="flex gap-4 flex-wrap items-center justify-between">
-        <div className="flex gap-4 flex-wrap flex-1">
-          <Input
-            placeholder="Search schedules..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="max-w-xs"
-          />
-          
-          <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Priority" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Priorities</SelectItem>
-              <SelectItem value="critical">Critical</SelectItem>
-              <SelectItem value="high">High</SelectItem>
-              <SelectItem value="medium">Medium</SelectItem>
-              <SelectItem value="low">Low</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Category" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Categories</SelectItem>
-              <SelectItem value="inspection">Inspection</SelectItem>
-              <SelectItem value="service">Service</SelectItem>
-              <SelectItem value="repair">Repair</SelectItem>
-              <SelectItem value="replacement">Replacement</SelectItem>
-              <SelectItem value="calibration">Calibration</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+    <div className="space-y-6">
+      <div className="flex justify-between items-center gap-4 flex-wrap">
+        <Input
+          placeholder="Search schedules..."
+          value={searchTerm}
+          onChange={e => setSearchTerm(e.target.value)}
+          className="max-w-xs"
+        />
 
         <div className="flex gap-2">
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             size="sm"
+            disabled={!enriched.length}
             onClick={() => {
-              exportSchedulesToPDF(filteredSchedules, 'Active Maintenance Schedules');
-              toast({
-                title: "Success",
-                description: "PDF exported successfully",
-              });
+              exportSchedulesToPDF(enriched, "Maintenance Schedules");
+              toast({ title: "PDF exported" });
             }}
-            disabled={filteredSchedules.length === 0}
           >
-            <FileText className="w-4 h-4 mr-2" />
             PDF
           </Button>
-          <Button 
-            variant="outline" 
+
+          <Button
+            variant="outline"
             size="sm"
+            disabled={!enriched.length}
             onClick={() => {
-              exportSchedulesToExcel(filteredSchedules, 'maintenance-schedules');
-              toast({
-                title: "Success",
-                description: "Excel file exported successfully",
-              });
+              exportSchedulesToExcel(enriched, "maintenance-schedules");
+              toast({ title: "Excel exported" });
             }}
-            disabled={filteredSchedules.length === 0}
           >
-            <FileSpreadsheet className="w-4 h-4 mr-2" />
             Excel
           </Button>
         </div>
       </div>
 
-      <div className="border rounded-lg overflow-x-auto">
-        <Table className="min-w-[800px]">
-          <TableHeader>
-            <TableRow>
-              <TableHead>Title</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead>Priority</TableHead>
-              <TableHead>Next Due</TableHead>
-              <TableHead>KM Progress</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Assigned To</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredSchedules.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={9} className="text-center text-muted-foreground">
-                  {showOverdueOnly ? "No overdue schedules" : "No schedules found"}
-                </TableCell>
-              </TableRow>
-            ) : (
-              filteredSchedules.map((schedule) => {
-                const daysUntilDue = getDaysUntilDue(schedule.next_due_date);
-                const isOverdue = daysUntilDue !== null && daysUntilDue < 0;
-                const isDueToday = daysUntilDue === 0;
+      {Object.entries(grouped).map(([subcat, items]) => {
+        const overdueCount = items.filter(i => i.status === "Overdue").length;
+        const soonCount = items.filter(i => i.status === "Due Soon").length;
 
-                return (
+        return (
+          <div key={subcat} className="border rounded-lg overflow-hidden">
+            <div className="px-4 py-3 border-b bg-muted/40 flex justify-between">
+              <div>
+                <div className="font-semibold">{subcat}</div>
+                <div className="text-xs text-muted-foreground">
+                  {items.length} schedules • {overdueCount} overdue • {soonCount} due soon
+                </div>
+              </div>
+            </div>
+
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Title</TableHead>
+                  <TableHead>Fleet</TableHead>
+                  <TableHead>Priority</TableHead>
+                  <TableHead>Due Status</TableHead>
+                  <TableHead>Assigned</TableHead>
+                  <TableHead></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {items.map(schedule => (
                   <TableRow key={schedule.id}>
-                    <TableCell className="font-medium">{schedule.title}</TableCell>
-                    <TableCell>{schedule.maintenance_type}</TableCell>
-                    <TableCell className="capitalize">{schedule.category}</TableCell>
+                    <TableCell className="font-medium">
+                      {schedule.title}
+                    </TableCell>
+
                     <TableCell>
-                      <Badge variant={getPriorityColor(schedule.priority)}>
+                      {schedule.fleetNumber || "—"}
+                    </TableCell>
+
+                    <TableCell>
+                      <Badge variant="outline">
                         {schedule.priority}
                       </Badge>
                     </TableCell>
-                    <TableCell>
-                      {schedule.odometer_based ? (
-                        <Badge variant="secondary" className="text-xs">KM-based</Badge>
-                      ) : schedule.next_due_date ? (
-                        <div className="flex items-center gap-2">
-                          {isOverdue && <AlertTriangle className="h-4 w-4 text-destructive" />}
-                          {isDueToday && <Calendar className="h-4 w-4 text-warning" />}
-                          <span className={isOverdue ? "text-destructive" : isDueToday ? "text-warning" : ""}>
-                            {format(new Date(schedule.next_due_date), "MMM dd, yyyy")}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground">Not scheduled</span>
+
+                    <TableCell className="space-y-1 min-w-[180px]">
+                      {schedule.progressPercent > 0 && (
+                        <Progress value={schedule.progressPercent} className="h-2" />
                       )}
-                    </TableCell>
-                    <TableCell>
-                      {schedule.odometer_based && schedule.vehicle_id && schedule.odometer_interval_km ? (() => {
-                        const currentOdo = vehicleOdometers[schedule.vehicle_id!] || 0;
-                        const lastReading = schedule.last_odometer_reading || 0;
-                        const kmStatus = calculateKmStatus(schedule.odometer_interval_km, lastReading, currentOdo);
-                        return (
-                          <div className="space-y-1 min-w-[120px]">
-                            <Progress
-                              value={kmStatus.progressPercent}
-                              className={`h-2 ${kmStatus.isOverdue ? '[&>div]:bg-red-500' : kmStatus.isApproaching ? '[&>div]:bg-amber-500' : ''}`}
-                            />
-                            <p className={`text-xs ${kmStatus.isOverdue ? 'text-red-600 font-semibold' : kmStatus.isApproaching ? 'text-amber-600' : 'text-muted-foreground'}`}>
-                              {kmStatus.isOverdue
-                                ? `${Math.abs(kmStatus.remainingKm).toLocaleString()} km overdue`
-                                : `${kmStatus.remainingKm.toLocaleString()} km remaining`}
-                            </p>
-                          </div>
-                        );
-                      })() : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {(() => {
-                        if (schedule.odometer_based && schedule.vehicle_id && schedule.odometer_interval_km) {
-                          const currentOdo = vehicleOdometers[schedule.vehicle_id!] || 0;
-                          const lastReading = schedule.last_odometer_reading || 0;
-                          const kmStatus = calculateKmStatus(schedule.odometer_interval_km, lastReading, currentOdo);
-                          if (kmStatus.isOverdue) return <Badge variant="destructive">KM Overdue</Badge>;
-                          if (kmStatus.isApproaching) return <Badge variant="default">KM Due Soon</Badge>;
-                          return <Badge variant="outline">Scheduled</Badge>;
+                      <div className="text-xs text-muted-foreground">
+                        {schedule.label}
+                      </div>
+                      <Badge
+                        variant={
+                          schedule.status === "Overdue"
+                            ? "destructive"
+                            : schedule.status === "Due Soon"
+                            ? "default"
+                            : "outline"
                         }
-                        if (isOverdue) return <Badge variant="destructive">Overdue</Badge>;
-                        if (isDueToday) return <Badge variant="default">Due Today</Badge>;
-                        if (daysUntilDue !== null && daysUntilDue <= 7) return <Badge variant="secondary">Due Soon</Badge>;
-                        return <Badge variant="outline">Scheduled</Badge>;
-                      })()}
+                      >
+                        {schedule.status}
+                      </Badge>
                     </TableCell>
-                    <TableCell>{schedule.assigned_to || "Unassigned"}</TableCell>
+
+                    <TableCell>
+                      {schedule.assigned_to || "Unassigned"}
+                    </TableCell>
+
                     <TableCell>
                       <Button
                         variant="ghost"
@@ -250,18 +294,18 @@ export function ScheduleList({ schedules, onUpdate, showOverdueOnly }: ScheduleL
                       </Button>
                     </TableCell>
                   </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </div>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        );
+      })}
 
       {selectedSchedule && (
         <ScheduleDetailsDialog
           schedule={selectedSchedule}
           open={!!selectedSchedule}
-          onOpenChange={(open) => !open && setSelectedSchedule(null)}
+          onOpenChange={open => !open && setSelectedSchedule(null)}
           onUpdate={onUpdate}
         />
       )}

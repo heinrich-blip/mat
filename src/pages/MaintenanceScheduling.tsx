@@ -30,11 +30,8 @@ export default function MaintenanceScheduling() {
         .order("next_due_date", { ascending: true });
 
       if (error) throw error;
-      // Cast schedule_type to the correct type
-      return (data || []).map(schedule => ({
-        ...schedule,
-        schedule_type: schedule.schedule_type as MaintenanceSchedule['schedule_type']
-      })) as MaintenanceSchedule[];
+      // Cast to MaintenanceSchedule[] — all fields are compatible or optional
+      return (data || []) as unknown as MaintenanceSchedule[];
     },
   });
 

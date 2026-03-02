@@ -1,4 +1,5 @@
 import Layout from "@/components/Layout";
+import { getFleetSubcategory, FLEET_SUBCATEGORY_META, type FleetSubcategory } from "@/utils/fleetCategories";
 import AddJobCardDialog from "@/components/dialogs/AddJobCardDialog";
 import JobCardDetailsDialog from "@/components/dialogs/JobCardDetailsDialog";
 import JobCardWeeklyCostReport from "@/components/maintenance/JobCardWeeklyCostReport";
@@ -41,12 +42,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { requestGoogleSheetsSync } from "@/hooks/useGoogleSheetsSync";
 import { supabase } from "@/integrations/supabase/client";
-import type { Database } from "@/integrations/supabase/types";
 import { useQuery } from "@tanstack/react-query";
 import
   {
     Calendar,
     CheckCircle2,
+    ChevronDown,
     ClipboardList,
     Download,
     FileText,
@@ -64,6 +65,76 @@ import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+
+// Local type definitions
+type Database = {
+  public: {
+    Tables: {
+      job_cards: {
+        Row: {
+          id: string;
+          created_at: string;
+          updated_at: string | null;
+          job_number: string;
+          title: string;
+          description: string | null;
+          status: string;
+          priority: string;
+          assignee: string | null;
+          due_date: string | null;
+          vehicle_id: string | null;
+          inspection_id: string | null;
+        };
+      };
+      vehicle_inspections: {
+        Row: {
+          id: string;
+          inspection_number: string;
+          inspection_type: string;
+          inspection_date: string;
+        };
+      };
+      vehicles: {
+        Row: {
+          id: string;
+          fleet_number: string | null;
+          registration_number: string;
+        };
+      };
+      parts_requests: {
+        Row: {
+          job_card_id: string | null;
+          part_name: string | null;
+          ir_number: string | null;
+          created_at: string;
+          ordered_at: string | null;
+        };
+      };
+      job_card_notes: {
+        Row: {
+          job_card_id: string;
+          note: string;
+          created_by: string;
+        };
+      };
+      action_items: {
+        Row: {
+          id: string;
+          title: string;
+          description: string | null;
+          priority: string;
+          due_date: string | null;
+          assigned_to: string | null;
+          status: string;
+          category: string;
+          related_entity_type: string;
+          related_entity_id: string;
+          created_by: string;
+        };
+      };
+    };
+  };
+};
 
 type BaseJobCard = Database["public"]["Tables"]["job_cards"]["Row"];
 type VehicleInspectionRow = Pick<
@@ -91,6 +162,12 @@ type JobCard = BaseJobCard & {
   partsSummary?: JobCardPartsSummary;
 };
 
+type FleetCategory = {
+  name: string;
+  color: string;
+  order: number;
+};
+
 const JobCards = () => {
   const { userName } = useAuth();
   const [selectedJob, setSelectedJob] = useState<JobCard | null>(null);
@@ -113,11 +190,78 @@ const JobCards = () => {
 
   // Filters
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeFleetFilter, setActiveFleetFilter] = useState<string>("all");
-  const [completedFleetFilter, setCompletedFleetFilter] = useState<string>("all");
+  const [closedActiveFleets, setClosedActiveFleets] = useState<Set<string>>(new Set());
+  const [closedCompletedFleets, setClosedCompletedFleets] = useState<Set<string>>(new Set());
   const [selectedPriority, setSelectedPriority] = useState<string>("all");
   const [selectedAssignee, setSelectedAssignee] = useState<string>("all");
   const [activeTab, setActiveTab] = useState<string>("job-cards");
+
+  // Category definitions derived from shared utility
+  const categories: Record<FleetSubcategory, FleetCategory> = Object.fromEntries(
+    Object.entries(FLEET_SUBCATEGORY_META).map(([key, meta]) => [
+      key,
+      { name: meta.label, color: meta.color, order: meta.order },
+    ])
+  ) as Record<FleetSubcategory, FleetCategory>;
+
+  // Helper function to categorize fleet numbers using suffix-based utility
+  const getFleetCategory = (fleetNumber: string | null): FleetSubcategory => {
+    if (!fleetNumber || fleetNumber === "__no_fleet__") return "UNASSIGNED";
+    return getFleetSubcategory(fleetNumber);
+  };
+
+  // Extract numeric part from fleet number for sorting
+  const getFleetNumber = (fleetNumber: string | null): number => {
+    if (!fleetNumber) return 999999;
+    const match = fleetNumber.match(/\d+/);
+    return match ? parseInt(match[0]) : 999999;
+  };
+
+  // Group and sort cards by category and fleet
+  const groupCardsByCategory = (cards: JobCard[]): Map<string, Map<string, JobCard[]>> => {
+    const grouped = new Map<string, Map<string, JobCard[]>>();
+    
+    // Initialize categories
+    Object.keys(categories).forEach(category => {
+      grouped.set(category, new Map<string, JobCard[]>());
+    });
+
+    // First, sort all cards by their numeric fleet value
+    const sortedCards = [...cards].sort((a, b) => {
+      const aNum = getFleetNumber(a.vehicle?.fleet_number || null);
+      const bNum = getFleetNumber(b.vehicle?.fleet_number || null);
+      return aNum - bNum;
+    });
+
+    // Group cards by category and fleet
+    sortedCards.forEach(card => {
+      const fleetNumber = card.vehicle?.fleet_number;
+      const category = getFleetCategory(fleetNumber || null);
+      const fleetKey = fleetNumber || "__no_fleet__";
+      
+      const categoryMap = grouped.get(category);
+      if (categoryMap) {
+        if (!categoryMap.has(fleetKey)) {
+          categoryMap.set(fleetKey, []);
+        }
+        categoryMap.get(fleetKey)!.push(card);
+      }
+    });
+
+    // Sort fleets within each category numerically
+    grouped.forEach((categoryMap, category) => {
+      const sortedEntries = Array.from(categoryMap.entries()).sort(([aKey], [bKey]) => {
+        const aNum = getFleetNumber(aKey === "__no_fleet__" ? null : aKey);
+        const bNum = getFleetNumber(bKey === "__no_fleet__" ? null : bKey);
+        return aNum - bNum;
+      });
+      
+      const sortedMap = new Map<string, JobCard[]>(sortedEntries);
+      grouped.set(category, sortedMap);
+    });
+
+    return grouped;
+  };
 
   // Fetch job cards with vehicle data
   const { data: jobCards = [], refetch, isLoading, error: queryError } = useQuery({
@@ -253,13 +397,6 @@ const JobCards = () => {
     },
   });
 
-  // Get unique fleet numbers for filter (exclude null, undefined, and empty strings)
-  const fleetNumbers = [...new Set(
-    jobCards
-      .map(card => card.vehicle?.fleet_number)
-      .filter((fn): fn is string => fn !== null && fn !== undefined && fn !== "")
-  )].sort();
-
   // Get unique assignees for filter (exclude null, undefined, and empty strings)
   const assignees = [...new Set(
     jobCards
@@ -289,14 +426,23 @@ const JobCards = () => {
   });
   const allCompletedCards = baseFilteredCards.filter(card => card.status?.toLowerCase() === "completed");
 
-  // Apply per-section fleet filters
-  const activeCards = activeFleetFilter === "all"
-    ? allActiveCards
-    : allActiveCards.filter(card => card.vehicle?.fleet_number === activeFleetFilter);
+  const toggleActiveFleet = (fleet: string) => {
+    setClosedActiveFleets(prev => {
+      const next = new Set(prev);
+      if (next.has(fleet)) next.delete(fleet);
+      else next.add(fleet);
+      return next;
+    });
+  };
 
-  const completedCards = completedFleetFilter === "all"
-    ? allCompletedCards
-    : allCompletedCards.filter(card => card.vehicle?.fleet_number === completedFleetFilter);
+  const toggleCompletedFleet = (fleet: string) => {
+    setClosedCompletedFleets(prev => {
+      const next = new Set(prev);
+      if (next.has(fleet)) next.delete(fleet);
+      else next.add(fleet);
+      return next;
+    });
+  };
 
   const exportJobCardsToExcel = useCallback(async () => {
     try {
@@ -657,159 +803,264 @@ const JobCards = () => {
 
   const JobCardTable = ({ cards, emptyMessage }: { cards: JobCard[]; emptyMessage: string }) => (
     <div className="overflow-x-auto">
-    <Table className="min-w-[900px]">
-      <TableHeader>
-        <TableRow>
-          <TableHead className="w-[100px]">Job #</TableHead>
-          <TableHead>Title</TableHead>
-          <TableHead>Fleet / Vehicle</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead>Priority</TableHead>
-          <TableHead>Assignee</TableHead>
-          <TableHead>Due Date</TableHead>
-          <TableHead>Linked References</TableHead>
-          <TableHead className="w-[80px]">Actions</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {cards.map((card) => (
-          <TableRow
-            key={card.id}
-            className="cursor-pointer border-b transition-colors hover:bg-muted/30"
-            onClick={() => handleJobClick(card)}
-          >
-            <TableCell className="font-mono text-sm">#{card.job_number}</TableCell>
-            <TableCell className="max-w-[280px]">
-              <div className="space-y-1">
-                <p className="font-medium leading-tight truncate">{card.title}</p>
-                <p className="text-xs text-muted-foreground">Created {new Date(card.created_at).toLocaleDateString()}</p>
-              </div>
-            </TableCell>
-            <TableCell>
-              {card.vehicle ? (
-                <div className="flex items-center gap-2">
-                  <Truck className="h-3.5 w-3.5 text-muted-foreground" />
-                  <div className="flex flex-col">
-                    {card.vehicle.fleet_number && (
-                      <Badge variant="outline" className="text-xs w-fit">
-                        {card.vehicle.fleet_number}
-                      </Badge>
-                    )}
-                    <span className="text-xs text-muted-foreground">
-                      {card.vehicle.registration_number}
-                    </span>
-                  </div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-[100px]">Job #</TableHead>
+            <TableHead>Title</TableHead>
+            <TableHead>Fleet / Vehicle</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Priority</TableHead>
+            <TableHead>Assignee</TableHead>
+            <TableHead>Due Date</TableHead>
+            <TableHead>Linked References</TableHead>
+            <TableHead className="w-[80px]">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {cards.map((card) => (
+            <TableRow
+              key={card.id}
+              className="cursor-pointer border-b transition-colors hover:bg-muted/30"
+              onClick={() => handleJobClick(card)}
+            >
+              <TableCell className="font-mono text-sm">#{card.job_number}</TableCell>
+              <TableCell className="max-w-[280px]">
+                <div className="space-y-1">
+                  <p className="font-medium leading-tight truncate">{card.title}</p>
+                  <p className="text-xs text-muted-foreground">Created {new Date(card.created_at).toLocaleDateString()}</p>
                 </div>
-              ) : (
-                <span className="text-muted-foreground">—</span>
-              )}
-            </TableCell>
-            <TableCell>{getStatusBadge(card.status)}</TableCell>
-            <TableCell>{getPriorityBadge(card.priority)}</TableCell>
-            <TableCell>
-              {card.assignee ? (
-                <div className="flex items-center gap-2">
-                  <User className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-sm">{card.assignee}</span>
-                </div>
-              ) : (
-                <span className="text-muted-foreground">—</span>
-              )}
-            </TableCell>
-            <TableCell>
-              {card.due_date ? (
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-sm">{new Date(card.due_date).toLocaleDateString()}</span>
-                </div>
-              ) : (
-                <span className="text-muted-foreground">—</span>
-              )}
-            </TableCell>
-            <TableCell>
-              <div className="space-y-1 max-w-[220px]">
-                {card.inspection ? (
-                  <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                    <FileText className="h-3 w-3 mr-1" />
-                    {card.inspection.inspection_number}
-                  </Badge>
-                ) : card.inspection_id ? (
-                  <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                    <FileText className="h-3 w-3 mr-1" />
-                    Inspection Linked
-                  </Badge>
-                ) : (
-                  <span className="text-muted-foreground text-sm">No inspection</span>
-                )}
-
-                {card.partsSummary && card.partsSummary.count > 0 ? (
-                  <div className="space-y-1">
-                    <div className="flex flex-wrap gap-1">
-                      <Badge variant="outline" className="text-xs">
-                        {card.partsSummary.count} Part{card.partsSummary.count > 1 ? "s" : ""}
-                      </Badge>
-                      {card.partsSummary.latestIrNumber && (
-                        <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200">
-                          IR {card.partsSummary.latestIrNumber}
+              </TableCell>
+              <TableCell>
+                {card.vehicle ? (
+                  <div className="flex items-center gap-2">
+                    <Truck className="h-3.5 w-3.5 text-muted-foreground" />
+                    <div className="flex flex-col">
+                      {card.vehicle.fleet_number && (
+                        <Badge variant="outline" className="text-xs w-fit">
+                          {card.vehicle.fleet_number}
                         </Badge>
                       )}
+                      <span className="text-xs text-muted-foreground">
+                        {card.vehicle.registration_number}
+                      </span>
                     </div>
-                    {card.partsSummary.latestPartName && (
-                      <p className="text-xs text-muted-foreground truncate">
-                        Latest part: {card.partsSummary.latestPartName}
-                      </p>
-                    )}
                   </div>
                 ) : (
-                  <p className="text-xs text-muted-foreground">No parts linked</p>
+                  <span className="text-muted-foreground">—</span>
                 )}
-              </div>
-            </TableCell>
-            <TableCell>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-muted-foreground"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                  <DropdownMenuItem onClick={() => openCommentDialog(card)}>
-                    <MessageSquarePlus className="h-4 w-4 mr-2" />
-                    Add Comment
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => openExternalFollowUpDialog(card)}>
-                    <ListPlus className="h-4 w-4 mr-2" />
-                    Add External Follow-up
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    className="text-destructive focus:text-destructive"
-                    onClick={() => handleDeleteClick(card)}
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete Job Card
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </TableCell>
-          </TableRow>
-        ))}
-        {cards.length === 0 && (
-          <TableRow>
-            <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-              {emptyMessage}
-            </TableCell>
-          </TableRow>
-        )}
-      </TableBody>
-    </Table>
+              </TableCell>
+              <TableCell>{getStatusBadge(card.status)}</TableCell>
+              <TableCell>{getPriorityBadge(card.priority)}</TableCell>
+              <TableCell>
+                {card.assignee ? (
+                  <div className="flex items-center gap-2">
+                    <User className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-sm">{card.assignee}</span>
+                  </div>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </TableCell>
+              <TableCell>
+                {card.due_date ? (
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-sm">{new Date(card.due_date).toLocaleDateString()}</span>
+                  </div>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </TableCell>
+              <TableCell>
+                <div className="space-y-1 max-w-[220px]">
+                  {card.inspection ? (
+                    <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                      <FileText className="h-3 w-3 mr-1" />
+                      {card.inspection.inspection_number}
+                    </Badge>
+                  ) : card.inspection_id ? (
+                    <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                      <FileText className="h-3 w-3 mr-1" />
+                      Inspection Linked
+                    </Badge>
+                  ) : (
+                    <span className="text-muted-foreground text-sm">No inspection</span>
+                  )}
+
+                  {card.partsSummary && card.partsSummary.count > 0 ? (
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap gap-1">
+                        <Badge variant="outline" className="text-xs">
+                          {card.partsSummary.count} Part{card.partsSummary.count > 1 ? "s" : ""}
+                        </Badge>
+                        {card.partsSummary.latestIrNumber && (
+                          <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200">
+                            IR {card.partsSummary.latestIrNumber}
+                          </Badge>
+                        )}
+                      </div>
+                      {card.partsSummary.latestPartName && (
+                        <p className="text-xs text-muted-foreground truncate">
+                          Latest part: {card.partsSummary.latestPartName}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">No parts linked</p>
+                  )}
+                </div>
+              </TableCell>
+              <TableCell>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                    <DropdownMenuItem onClick={() => openCommentDialog(card)}>
+                      <MessageSquarePlus className="h-4 w-4 mr-2" />
+                      Add Comment
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => openExternalFollowUpDialog(card)}>
+                      <ListPlus className="h-4 w-4 mr-2" />
+                      Add External Follow-up
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={() => handleDeleteClick(card)}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete Job Card
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </TableCell>
+            </TableRow>
+          ))}
+          {cards.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                {emptyMessage}
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
     </div>
   );
+
+  const FleetAccordionSection = ({
+    fleetLabel,
+    cards,
+    isOpen,
+    onToggle,
+    statusVariant,
+  }: {
+    fleetLabel: string;
+    cards: JobCard[];
+    isOpen: boolean;
+    onToggle: () => void;
+    statusVariant: "active" | "completed";
+  }) => (
+    <div className="border border-border rounded-xl overflow-hidden transition-shadow duration-200 shadow-sm hover:shadow-md">
+      <button
+        type="button"
+        className={`w-full flex items-center justify-between px-5 py-4 text-left transition-colors duration-150 ${
+          statusVariant === "active"
+            ? "bg-gradient-to-r from-orange-50/80 to-amber-50/60 hover:from-orange-100/80 hover:to-amber-100/60 dark:from-orange-950/20 dark:to-amber-950/20 dark:hover:from-orange-950/30 dark:hover:to-amber-950/30"
+            : "bg-gradient-to-r from-emerald-50/80 to-green-50/60 hover:from-emerald-100/80 hover:to-green-100/60 dark:from-emerald-950/20 dark:to-green-950/20 dark:hover:from-emerald-950/30 dark:hover:to-green-950/30"
+        }`}
+        onClick={onToggle}
+      >
+        <div className="flex items-center gap-3">
+          <div className={`flex items-center justify-center w-9 h-9 rounded-lg ${
+            statusVariant === "active"
+              ? "bg-orange-100 dark:bg-orange-900/50"
+              : "bg-emerald-100 dark:bg-emerald-900/50"
+          }`}>
+            <Truck className={`h-4 w-4 ${
+              statusVariant === "active" ? "text-orange-600 dark:text-orange-400" : "text-emerald-600 dark:text-emerald-400"
+            }`} />
+          </div>
+          <div>
+            <p className="font-semibold text-sm text-foreground leading-none">{fleetLabel}</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {cards.length} {cards.length === 1 ? "job card" : "job cards"}
+            </p>
+          </div>
+          <Badge
+            className={`ml-1 text-xs font-semibold border ${
+              statusVariant === "active"
+                ? "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/40 dark:text-orange-400 dark:border-orange-800"
+                : "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-400 dark:border-emerald-800"
+            }`}
+          >
+            {cards.length}
+          </Badge>
+        </div>
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <span className="text-xs hidden sm:inline select-none">{isOpen ? "Collapse" : "Expand"}</span>
+          <ChevronDown
+            className={`h-4 w-4 transition-transform duration-300 ${isOpen ? "rotate-180" : ""}`}
+          />
+        </div>
+      </button>
+      {isOpen && (
+        <div className="border-t border-border/60 bg-background">
+          <JobCardTable cards={cards} emptyMessage={`No job cards for ${fleetLabel}`} />
+        </div>
+      )}
+    </div>
+  );
+
+  const renderCategorySection = (
+    category: string,
+    fleetMap: Map<string, JobCard[]>,
+    isActive: boolean,
+    closedFleets: Set<string>,
+    toggleFleet: (fleet: string) => void
+  ) => {
+    if (fleetMap.size === 0) return null;
+
+    const categoryInfo = categories[category];
+    const totalCards = Array.from(fleetMap.values()).reduce((sum, cards) => sum + cards.length, 0);
+
+    return (
+      <div key={category} className="mb-6">
+        <div className="flex items-center gap-2 mb-3">
+          <h3 className="text-lg font-semibold">{categoryInfo.name}</h3>
+          <Badge className={categoryInfo.color}>
+            {totalCards} {totalCards === 1 ? 'card' : 'cards'}
+          </Badge>
+        </div>
+        <div className="space-y-3">
+          {Array.from(fleetMap.entries()).map(([fleetKey, cards]) => {
+            const fleetLabel = fleetKey === "__no_fleet__"
+              ? "Unassigned — No Fleet"
+              : `Fleet ${fleetKey}`;
+            return (
+              <FleetAccordionSection
+                key={`${category}-${fleetKey}`}
+                fleetLabel={fleetLabel}
+                cards={cards}
+                isOpen={!closedFleets.has(fleetKey)}
+                onToggle={() => toggleFleet(fleetKey)}
+                statusVariant={isActive ? "active" : "completed"}
+              />
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <Layout>
@@ -852,137 +1103,215 @@ const JobCards = () => {
           <TabsContent value="job-cards" className="space-y-6 mt-6">
             {/* Stats Overview */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Active Jobs</CardTitle>
-              <ClipboardList className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-semibold">{allActiveCards.length}</div>
-              <p className="text-xs text-muted-foreground">Pending + In Progress</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Completed</CardTitle>
-              <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-semibold">{allCompletedCards.length}</div>
-              <p className="text-xs text-muted-foreground">Finished jobs</p>
-            </CardContent>
-          </Card>
-        </div>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Active Jobs</CardTitle>
+                  <ClipboardList className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-semibold">{allActiveCards.length}</div>
+                  <p className="text-xs text-muted-foreground">Pending + In Progress</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Completed</CardTitle>
+                  <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-semibold">{allCompletedCards.length}</div>
+                  <p className="text-xs text-muted-foreground">Finished jobs</p>
+                </CardContent>
+              </Card>
+            </div>
 
-        {/* Filters */}
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-4">
-              <div className="flex-1 min-w-0 sm:min-w-[200px]">
-                <div className="relative">
-                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search job cards..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-8"
-                  />
+            {/* Filters */}
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-4">
+                  <div className="flex-1 min-w-0 sm:min-w-[200px]">
+                    <div className="relative">
+                      <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search job cards..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-8"
+                      />
+                    </div>
+                  </div>
+
+                  <Select value={selectedPriority} onValueChange={setSelectedPriority}>
+                    <SelectTrigger className="w-full sm:w-[140px]">
+                      <SelectValue placeholder="Priority" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Priorities</SelectItem>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                      <SelectItem value="urgent">Urgent</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {assignees.length > 0 && (
+                    <Select value={selectedAssignee} onValueChange={setSelectedAssignee}>
+                      <SelectTrigger className="w-full sm:w-[160px]">
+                        <SelectValue placeholder="Assignee" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Assignees</SelectItem>
+                        {assignees.map((assignee) => (
+                          <SelectItem key={assignee} value={assignee}>
+                            {assignee}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
-              </div>
+              </CardContent>
+            </Card>
 
-              <Select value={selectedPriority} onValueChange={setSelectedPriority}>
-                <SelectTrigger className="w-full sm:w-[140px]">
-                  <SelectValue placeholder="Priority" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Priorities</SelectItem>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                  <SelectItem value="urgent">Urgent</SelectItem>
-                </SelectContent>
-              </Select>
+            {/* Active Job Cards (Pending + In Progress) */}
+            <Card>
+              <CardHeader>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <ClipboardList className="h-5 w-5 text-orange-500" />
+                    <CardTitle>Active Job Cards</CardTitle>
+                    <Badge className="bg-orange-100 text-orange-700 border border-orange-200 dark:bg-orange-900/40 dark:text-orange-400 dark:border-orange-800 font-semibold text-xs">
+                      {allActiveCards.length}
+                    </Badge>
+                  </div>
+                  {allActiveCards.length > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-3 text-xs text-muted-foreground hover:text-foreground border border-transparent hover:border-border/50"
+                        onClick={() => setClosedActiveFleets(new Set())}
+                      >
+                        Expand All
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-3 text-xs text-muted-foreground hover:text-foreground border border-transparent hover:border-border/50"
+                        onClick={() => {
+                          const allFleets = new Set<string>();
+                          const grouped = groupCardsByCategory(allActiveCards);
+                          grouped.forEach((fleetMap) => {
+                            fleetMap.forEach((_, fleetKey) => {
+                              allFleets.add(fleetKey);
+                            });
+                          });
+                          setClosedActiveFleets(allFleets);
+                        }}
+                      >
+                        Collapse All
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                <CardDescription>
+                  Jobs that are pending or currently in progress — categorized by fleet type
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pt-0">
+                {allActiveCards.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <ClipboardList className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                    <p className="text-sm font-medium">No active job cards</p>
+                    <p className="text-xs mt-1">No results match the current filter criteria</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {Object.keys(categories)
+                      .sort((a, b) => categories[a].order - categories[b].order)
+                      .map(category => 
+                        renderCategorySection(
+                          category, 
+                          groupCardsByCategory(allActiveCards).get(category) || new Map(), 
+                          true, 
+                          closedActiveFleets, 
+                          toggleActiveFleet
+                        )
+                      )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
-              {assignees.length > 0 && (
-                <Select value={selectedAssignee} onValueChange={setSelectedAssignee}>
-                  <SelectTrigger className="w-full sm:w-[160px]">
-                    <SelectValue placeholder="Assignee" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Assignees</SelectItem>
-                    {assignees.map((assignee) => (
-                      <SelectItem key={assignee} value={assignee}>
-                        {assignee}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Active Job Cards (Pending + In Progress) */}
-        <Card>
-          <CardHeader>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <ClipboardList className="h-5 w-5 text-orange-500" />
-                <CardTitle>Active Job Cards</CardTitle>
-              </div>
-              <Select value={activeFleetFilter} onValueChange={setActiveFleetFilter}>
-                <SelectTrigger className="w-full sm:w-[160px]">
-                  <SelectValue placeholder="Filter by Fleet" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Fleets</SelectItem>
-                  {fleetNumbers.map((fn) => (
-                    <SelectItem key={fn} value={fn}>
-                      {fn}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <CardDescription>
-              Jobs that are pending or currently in progress ({activeCards.length} of {allActiveCards.length} total)
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <JobCardTable cards={activeCards} emptyMessage="No active job cards" />
-          </CardContent>
-        </Card>
-
-        {/* Completed Job Cards */}
-        <Card>
-          <CardHeader>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-green-500" />
-                <CardTitle>Completed Job Cards</CardTitle>
-              </div>
-              <Select value={completedFleetFilter} onValueChange={setCompletedFleetFilter}>
-                <SelectTrigger className="w-full sm:w-[160px]">
-                  <SelectValue placeholder="Filter by Fleet" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Fleets</SelectItem>
-                  {fleetNumbers.map((fn) => (
-                    <SelectItem key={fn} value={fn}>
-                      {fn}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <CardDescription>
-              Finished maintenance jobs ({completedCards.length} of {allCompletedCards.length} total)
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <JobCardTable cards={completedCards} emptyMessage="No completed job cards" />
-          </CardContent>
-        </Card>
+            {/* Completed Job Cards */}
+            <Card>
+              <CardHeader>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <CheckCircle2 className="h-5 w-5 text-green-500" />
+                    <CardTitle>Completed Job Cards</CardTitle>
+                    <Badge className="bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-400 dark:border-emerald-800 font-semibold text-xs">
+                      {allCompletedCards.length}
+                    </Badge>
+                  </div>
+                  {allCompletedCards.length > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-3 text-xs text-muted-foreground hover:text-foreground border border-transparent hover:border-border/50"
+                        onClick={() => setClosedCompletedFleets(new Set())}
+                      >
+                        Expand All
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-3 text-xs text-muted-foreground hover:text-foreground border border-transparent hover:border-border/50"
+                        onClick={() => {
+                          const allFleets = new Set<string>();
+                          const grouped = groupCardsByCategory(allCompletedCards);
+                          grouped.forEach((fleetMap) => {
+                            fleetMap.forEach((_, fleetKey) => {
+                              allFleets.add(fleetKey);
+                            });
+                          });
+                          setClosedCompletedFleets(allFleets);
+                        }}
+                      >
+                        Collapse All
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                <CardDescription>
+                  Finished maintenance jobs — categorized by fleet type
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pt-0">
+                {allCompletedCards.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <CheckCircle2 className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                    <p className="text-sm font-medium">No completed job cards</p>
+                    <p className="text-xs mt-1">No results match the current filter criteria</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {Object.keys(categories)
+                      .sort((a, b) => categories[a].order - categories[b].order)
+                      .map(category => 
+                        renderCategorySection(
+                          category, 
+                          groupCardsByCategory(allCompletedCards).get(category) || new Map(), 
+                          false, 
+                          closedCompletedFleets, 
+                          toggleCompletedFleet
+                        )
+                      )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="cost-reports" className="mt-6">

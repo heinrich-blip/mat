@@ -30,6 +30,7 @@ interface InspectionActionsMenuProps {
   onViewPDF: () => void;
   onArchive: () => void;
   onDelete: () => void;
+  hasFaultsNeedingAction?: boolean; // New prop
 }
 
 export function InspectionActionsMenu({
@@ -43,6 +44,7 @@ export function InspectionActionsMenu({
   onViewPDF,
   onArchive,
   onDelete,
+  hasFaultsNeedingAction = false, // Default to false
 }: InspectionActionsMenuProps) {
   return (
     <DropdownMenu>
@@ -69,9 +71,19 @@ export function InspectionActionsMenu({
           Create Job Card
         </DropdownMenuItem>
 
-        <DropdownMenuItem onClick={onCorrectiveAction}>
+        {/* FIXED: Disable Corrective Action when no faults need attention */}
+        <DropdownMenuItem 
+          onClick={onCorrectiveAction}
+          disabled={!hasFaultsNeedingAction}
+          className={!hasFaultsNeedingAction ? "opacity-50 cursor-not-allowed" : ""}
+        >
           <ClipboardList className="h-4 w-4 mr-2" />
-          Corrective Action
+          <span>Corrective Action</span>
+          {!hasFaultsNeedingAction && (
+            <span className="ml-auto text-xs text-muted-foreground">
+              No faults
+            </span>
+          )}
         </DropdownMenuItem>
 
         <DropdownMenuItem onClick={onRootCauseAnalysis}>

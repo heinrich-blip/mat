@@ -5,6 +5,22 @@ import type { Profile } from "@/types/database";
 import { Session, User } from "@supabase/supabase-js";
 import { createContext, useContext, useEffect, useMemo, useState, useRef, useCallback } from "react";
 
+// Define the shape of the user data returned from Supabase
+interface UserData {
+  user_id: number;
+  name: string;
+  username: string;
+  shortcode: string;
+  notification_email: string;
+  role_id: number | null;
+  status: string;
+  roles: {
+    role_name: string;
+  } | {
+    role_name: string;
+  }[] | null;
+}
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
@@ -18,6 +34,22 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function buildFallbackProfile(userEmail: string, authUser: User): Profile {
+  const metadata = authUser.user_metadata || {};
+  return {
+    user_id: 0,
+    name: metadata.full_name || metadata.name || userEmail.split('@')[0],
+    username: userEmail.split('@')[0],
+    shortcode: (userEmail.split('@')[0]).substring(0, 3).toUpperCase(),
+    email: userEmail,
+    phone: metadata.phone || null,
+    role_id: null,
+    status: "Active",
+    role: "Driver",
+    full_name: metadata.full_name || metadata.name || userEmail.split('@')[0],
+  };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -25,32 +57,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Simple refs for mounted state and fetch versioning (no AbortController)
+  // Refs for mounted state and fetch versioning
   const mountedRef = useRef(true);
   const fetchVersionRef = useRef(0);
+  const isLoadingRef = useRef(true);
+  
+  // Keep isLoadingRef in sync
+  isLoadingRef.current = isLoading;
 
-  // Memoize Supabase client creation to handle errors gracefully
+  // Memoize Supabase client creation
   const supabase = useMemo(() => {
     try {
       return createClient();
     } catch (err) {
       console.error("Failed to initialize Supabase client:", err);
-      setError(err instanceof Error ? err.message : "Failed to initialize authentication");
-      setIsLoading(false);
       return null;
     }
   }, []);
 
-  const fetchProfile = useCallback(async (userEmail: string | undefined, authUser?: User | null): Promise<Profile | null> => {
-    if (!userEmail || !supabase || !mountedRef.current) {
-      return null;
+  // If client failed, surface error once
+  useEffect(() => {
+    if (!supabase) {
+      setError("Failed to initialize authentication");
+      setIsLoading(false);
     }
+  }, [supabase]);
 
-    // Increment version to invalidate any in-flight fetches
+  const fetchProfile = useCallback(async (
+    userEmail: string | undefined,
+    authUser?: User | null,
+  ): Promise<Profile | null> => {
+    if (!userEmail || !supabase || !mountedRef.current) return null;
+    
     const thisVersion = ++fetchVersionRef.current;
 
     try {
-      // Try to fetch from users table by notification_email or username
       const { data, error: queryError } = await supabase
         .from("users")
         .select(`
@@ -61,41 +102,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           notification_email,
           role_id,
           status,
-          roles (role_name)
+          roles:role_id (
+            role_name
+          )
         `)
-        .or(`notification_email.eq."${userEmail}",username.eq."${userEmail}"`)
+        .or(`notification_email.eq.${userEmail},username.eq.${userEmail}`)
         .eq("status", "Active")
-        .single();
+        .maybeSingle();
 
-      // Stale check - a newer fetch was started, discard this result
-      if (fetchVersionRef.current !== thisVersion || !mountedRef.current) {
-        return null;
-      }
+      // Stale-request guard
+      if (fetchVersionRef.current !== thisVersion || !mountedRef.current) return null;
 
       if (queryError) {
-        // User not found in users table - create fallback profile from auth data
-        if (authUser) {
-          const metadata = authUser.user_metadata || {};
-          return {
-            user_id: 0,
-            name: metadata.full_name || metadata.name || userEmail.split('@')[0],
-            username: userEmail.split('@')[0],
-            shortcode: (userEmail.split('@')[0]).substring(0, 3).toUpperCase(),
-            email: userEmail,
-            phone: metadata.phone || null,
-            role_id: null,
-            status: "Active",
-            role: "Driver",
-            full_name: metadata.full_name || metadata.name || userEmail.split('@')[0],
-          } as Profile;
-        }
-        return null;
+        console.error("Profile query error:", queryError);
+        return authUser ? buildFallbackProfile(userEmail, authUser) : null;
       }
 
-      // Extract role name - roles is an object from single FK join
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const userData = data as any;
-      const rolesData = userData.roles as { role_name: string } | null;
+      if (!data) {
+        return authUser ? buildFallbackProfile(userEmail, authUser) : null;
+      }
+
+      const userData = data as unknown as UserData;
+      
+      let roleName: string | null = null;
+      if (userData.roles) {
+        if (Array.isArray(userData.roles) && userData.roles.length > 0) {
+          roleName = userData.roles[0]?.role_name;
+        } else if (typeof userData.roles === "object") {
+          roleName = (userData.roles as { role_name: string }).role_name;
+        }
+      }
 
       return {
         user_id: userData.user_id,
@@ -106,78 +142,74 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         phone: null,
         role_id: userData.role_id,
         status: userData.status,
-        role: rolesData?.role_name || null,
+        role: roleName || "Driver",
         full_name: userData.name,
-      } as Profile;
+      };
     } catch (err) {
-      // Silently ignore AbortError / DOMException from unmount or navigation
-      if (err instanceof Error && (err.name === 'AbortError' || err.name === 'DOMException')) {
+      if (err instanceof Error && (err.name === "AbortError" || err.name === "DOMException")) {
         return null;
       }
-
-      // Stale check
-      if (fetchVersionRef.current !== thisVersion || !mountedRef.current) {
-        return null;
-      }
-
+      if (fetchVersionRef.current !== thisVersion || !mountedRef.current) return null;
+      
       console.error("Error fetching profile:", err);
-
-      // Return fallback profile on any error so the user isn't stuck
-      if (authUser) {
-        const metadata = authUser.user_metadata || {};
-        return {
-          user_id: 0,
-          name: metadata.full_name || metadata.name || userEmail.split('@')[0],
-          username: userEmail.split('@')[0],
-          shortcode: (userEmail.split('@')[0]).substring(0, 3).toUpperCase(),
-          email: userEmail,
-          phone: metadata.phone || null,
-          role_id: null,
-          status: "Active",
-          role: "Driver",
-          full_name: metadata.full_name || metadata.name || userEmail.split('@')[0],
-        } as Profile;
-      }
-      return null;
+      return authUser ? buildFallbackProfile(userEmail, authUser) : null;
     }
   }, [supabase]);
 
   const refreshProfile = useCallback(async () => {
     if (user?.email && mountedRef.current) {
-      const profileData = await fetchProfile(user.email, user);
-      if (mountedRef.current) {
-        setProfile(profileData);
-      }
+      const p = await fetchProfile(user.email, user);
+      if (mountedRef.current) setProfile(p);
     }
   }, [user, fetchProfile]);
 
+  // Single initialisation effect
   useEffect(() => {
     mountedRef.current = true;
     
-    // If supabase client failed to initialize, don't proceed
-    if (!supabase) {
-      setIsLoading(false);
-      return;
-    }
+    if (!supabase) return;
 
-    // Safety timeout - ensure loading state resolves even if auth hangs
+    // Safety timeout
     const loadingTimeout = setTimeout(() => {
-      if (mountedRef.current && isLoading) {
-        console.warn("Auth initialization timeout - forcing loading state to complete");
+      if (mountedRef.current && isLoadingRef.current) {
+        console.warn("Auth init timeout — forcing loading = false");
         setIsLoading(false);
       }
-    }, 3000); // 3 second timeout (faster for mobile)
+    }, 3000);
 
-    // Track whether initAuth has set loading to false (to avoid double-processing)
     let initComplete = false;
 
-    // Get initial session
-    const initAuth = async () => {
-      try {
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    // Capture the ref object and current value at effect setup for cleanup safety
+    const fetchVersion = fetchVersionRef;
+    const initialFetchVersion = fetchVersion.current;
 
-        if (!mountedRef.current) return;
+    // Subscribe to auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+      if (!mountedRef.current) return;
 
+      setSession(newSession);
+      setUser(newSession?.user ?? null);
+
+      if (newSession?.user?.email) {
+        const p = await fetchProfile(newSession.user.email, newSession.user);
+        if (mountedRef.current) setProfile(p);
+      } else {
+        setProfile(null);
+      }
+
+      if (!initComplete && mountedRef.current) {
+        setIsLoading(false);
+        initComplete = true;
+      }
+    });
+
+    // Eagerly kick-off a session check
+    supabase.auth.getSession()
+      .then(async ({ data: { session: existingSession }, error: sessionError }) => {
+        if (!mountedRef.current || initComplete) return;
+        
         if (sessionError) {
           console.error("Error getting session:", sessionError);
           setIsLoading(false);
@@ -185,74 +217,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        setSession(session);
-        setUser(session?.user ?? null);
+        setSession(existingSession);
+        setUser(existingSession?.user ?? null);
 
-        if (session?.user?.email) {
-          const profileData = await fetchProfile(session.user.email, session.user);
-          if (mountedRef.current) setProfile(profileData);
+        if (existingSession?.user?.email) {
+          const p = await fetchProfile(existingSession.user.email, existingSession.user);
+          if (mountedRef.current) setProfile(p);
         }
 
         if (mountedRef.current) {
           setIsLoading(false);
           initComplete = true;
         }
-      } catch (err) {
-        // Silently ignore AbortError from component unmount / navigation
-        if (err instanceof Error && (err.name === 'AbortError' || err.name === 'DOMException')) {
-          return;
-        }
+      })
+      .catch((err) => {
         console.error("Auth initialization error:", err);
         if (mountedRef.current) {
           setIsLoading(false);
           initComplete = true;
         }
-      }
-    };
-
-    initAuth();
-
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mountedRef.current) return;
-
-      setSession(session);
-      setUser(session?.user ?? null);
-
-      if (session?.user?.email) {
-        const profileData = await fetchProfile(session.user.email, session.user);
-        if (mountedRef.current) setProfile(profileData);
-      } else {
-        setProfile(null);
-      }
-
-      // If initAuth hasn't finished yet, mark loading complete here
-      if (!initComplete && mountedRef.current) {
-        setIsLoading(false);
-        initComplete = true;
-      }
-    });
+      });
 
     return () => {
       mountedRef.current = false;
       clearTimeout(loadingTimeout);
-      // Invalidate any in-flight profile fetches by incrementing version
-      fetchVersionRef.current = fetchVersionRef.current + 1;
+      
+      // Use the captured initial version to increment safely
+      // Only increment if no other effect has already incremented it
+      if (fetchVersion.current === initialFetchVersion) {
+        fetchVersion.current++;
+      }
+      
       subscription.unsubscribe();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [supabase, fetchProfile]); // Keep these dependencies
 
-  const signIn = async (email: string, password: string) => {
-    if (!supabase) {
-      return { error: new Error("Authentication service not available") };
-    }
-
-    // Invalidate any in-flight profile fetches before sign in
+  const signIn = useCallback(async (email: string, password: string) => {
+    if (!supabase) return { error: new Error("Authentication service not available") };
+    
     fetchVersionRef.current++;
-
+    
     try {
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email,
@@ -264,12 +268,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { error: signInError as Error };
       }
 
-      // Manually set user/session if auth state change doesn't fire immediately
       if (data.user && data.session && mountedRef.current) {
         setUser(data.user);
         setSession(data.session);
-        const profileData = await fetchProfile(data.user.email, data.user);
-        if (mountedRef.current) setProfile(profileData);
+        const p = await fetchProfile(data.user.email, data.user);
+        if (mountedRef.current) setProfile(p);
       }
 
       return { error: null };
@@ -277,14 +280,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error("Sign in exception:", err);
       return { error: err as Error };
     }
-  };
+  }, [supabase, fetchProfile]);
 
-  const signOut = async () => {
-    // Invalidate any pending profile fetches
+  const signOut = useCallback(async () => {
     fetchVersionRef.current++;
-
+    
     if (!supabase) {
-      // Still clear local state even if no supabase client
       setUser(null);
       setSession(null);
       setProfile(null);
@@ -293,42 +294,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      // Sign out from Supabase first (local scope to just clear this session)
-      const { error: signOutError } = await supabase.auth.signOut({ scope: 'local' });
+      const { error: signOutError } = await supabase.auth.signOut({ scope: "local" });
       if (signOutError) {
         console.error("Sign out error:", signOutError);
         throw signOutError;
       }
-
-      // Clear local state after successful sign out
-      setUser(null);
-      setSession(null);
-      setProfile(null);
-      setIsLoading(false);
     } catch (err) {
       console.error("Sign out exception:", err);
-      // Still clear local state even if Supabase call fails
+    } finally {
       setUser(null);
       setSession(null);
       setProfile(null);
       setIsLoading(false);
-      throw err;
     }
-  };
+  }, [supabase]);
+
+  const value = useMemo<AuthContextType>(() => ({
+    user,
+    session,
+    profile,
+    isLoading,
+    error,
+    signIn,
+    signOut,
+    refreshProfile,
+  }), [user, session, profile, isLoading, error, signIn, signOut, refreshProfile]);
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        session,
-        profile,
-        isLoading,
-        error,
-        signIn,
-        signOut,
-        refreshProfile,
-      }}
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

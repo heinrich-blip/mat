@@ -1,4 +1,5 @@
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -10,8 +11,9 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { getFleetSubcategory, isReeferFleet, FLEET_SUBCATEGORY_META } from "@/utils/fleetCategories";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 
 interface AddScheduleDialogProps {
@@ -66,27 +68,42 @@ export function AddScheduleDialog({ open, onOpenChange, onSuccess }: AddSchedule
   const odometerBased = watch("odometer_based");
   const selectedVehicleId = watch("vehicle_id");
 
-  // Auto-populate last_odometer_reading from vehicle's current_odometer
-  const { data: selectedVehicleData } = useQuery({
-    queryKey: ["vehicle-odometer", selectedVehicleId],
+  // Fetch the selected vehicle's fleet number to determine subcategory
+  const selectedVehicle = vehicles.find(v => v.id === selectedVehicleId);
+  const selectedFleetNumber = selectedVehicle?.fleet_number ?? null;
+
+  // Determine if selected vehicle is a REEFER (fleet suffix 'F')
+  const isReeferVehicle = isReeferFleet(selectedFleetNumber);
+  const fleetSubcategory = selectedFleetNumber ? getFleetSubcategory(selectedFleetNumber) : null;
+
+  // Fetch the most recent operating hours from reefer_diesel_records for REEFERS
+  const { data: latestReeferHours } = useQuery({
+    queryKey: ["reefer-latest-hours", selectedFleetNumber],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("vehicles")
-        .select("current_odometer")
-        .eq("id", selectedVehicleId)
-        .single();
+        .from("reefer_diesel_records")
+        .select("operating_hours")
+        .eq("reefer_unit", selectedFleetNumber!)
+        .not("operating_hours", "is", null)
+        .order("date", { ascending: false })
+        .limit(1)
+        .maybeSingle();
       if (error) throw error;
-      return data;
+      return data?.operating_hours ?? null;
     },
-    enabled: !!selectedVehicleId && selectedVehicleId !== "none" && odometerBased,
+    enabled: isReeferVehicle && !!selectedFleetNumber,
   });
 
-  // Set last_odometer_reading when vehicle data is fetched
-  useEffect(() => {
-    if (selectedVehicleData?.current_odometer && odometerBased) {
-      setValue("last_odometer_reading", selectedVehicleData.current_odometer);
+  // Auto-set odometer_based when a REEFER is selected (repurposed for hours)
+  if (isReeferVehicle && !odometerBased) {
+    setValue("odometer_based", true);
+    if (latestReeferHours !== null && latestReeferHours !== undefined) {
+      setValue("last_odometer_reading", latestReeferHours);
     }
-  }, [selectedVehicleData, odometerBased, setValue]);
+  } else if (!isReeferVehicle && odometerBased) {
+    // Only clear if user didn't manually toggle — we don't track manual toggle here,
+    // so we leave it alone for non-reefer vehicles
+  }
 
   const onSubmit = async (data: Record<string, unknown>) => {
     setLoading(true);
@@ -116,7 +133,7 @@ export function AddScheduleDialog({ open, onOpenChange, onSuccess }: AddSchedule
         }
       }
 
-      // For KM-based schedules, use a far-future sentinel date (not shown in UI)
+      // For KM-based or hours-based (REEFER) schedules, use a far-future sentinel date
       const isOdometerBased = data.odometer_based as boolean;
       const finalNextDueDate = isOdometerBased
         ? '2099-12-31'
@@ -136,9 +153,12 @@ export function AddScheduleDialog({ open, onOpenChange, onSuccess }: AddSchedule
         assigned_to: data.assigned_to || null,
         estimated_duration_hours: data.estimated_duration_hours,
         auto_create_job_card: data.auto_create_job_card,
-        odometer_based: data.odometer_based,
-        odometer_interval_km: isOdometerBased ? data.odometer_interval_km : null,
-        last_odometer_reading: isOdometerBased ? (data.last_odometer_reading || 0) : null,
+        // For REEFERS: odometer_based=true, odometer_interval_km stores hours interval,
+        // last_odometer_reading stores last hours reading.
+        // For non-REEFERS: odometer columns store km values normally.
+        odometer_based: isReeferVehicle ? true : data.odometer_based,
+        odometer_interval_km: (isReeferVehicle || isOdometerBased) ? data.odometer_interval_km : null,
+        last_odometer_reading: (isReeferVehicle || isOdometerBased) ? (data.last_odometer_reading || 0) : null,
         notes: data.notes || null,
         // Required fields
         next_due_date: finalNextDueDate,
@@ -155,7 +175,8 @@ export function AddScheduleDialog({ open, onOpenChange, onSuccess }: AddSchedule
       };
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await supabase.from("maintenance_schedules").insert([submitData as any]);      if (error) throw error;
+      const { error } = await supabase.from("maintenance_schedules").insert([submitData as any]);
+      if (error) throw error;
 
       toast({
         title: "Success",
@@ -211,16 +232,36 @@ export function AddScheduleDialog({ open, onOpenChange, onSuccess }: AddSchedule
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">None (Fleet-wide schedule)</SelectItem>
-                  {vehicles.map((vehicle) => (
-                    <SelectItem key={vehicle.id} value={vehicle.id}>
-                      {vehicle.fleet_number || vehicle.registration_number} - {vehicle.registration_number}
-                      {vehicle.vehicle_type && ` (${vehicle.vehicle_type})`}
-                    </SelectItem>
-                  ))}
+                  {vehicles.map((vehicle) => {
+                    const sub = getFleetSubcategory(vehicle.fleet_number);
+                    const meta = FLEET_SUBCATEGORY_META[sub];
+                    return (
+                      <SelectItem key={vehicle.id} value={vehicle.id}>
+                        {vehicle.fleet_number || vehicle.registration_number} - {vehicle.registration_number}
+                        {vehicle.vehicle_type && ` (${vehicle.vehicle_type})`}
+                        {` [${meta.label}]`}
+                        {isReeferFleet(vehicle.fleet_number) && " ❄️"}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
+              {selectedVehicleId && selectedVehicleId !== "none" && fleetSubcategory && (
+                <div className="flex items-center gap-2 mt-1">
+                  <Badge className={`${FLEET_SUBCATEGORY_META[fleetSubcategory].color} border text-xs font-semibold`}>
+                    {isReeferVehicle ? "❄️ " : ""}{FLEET_SUBCATEGORY_META[fleetSubcategory].label}
+                    {isReeferVehicle && " — Hours-based scheduling"}
+                  </Badge>
+                  {isReeferVehicle && latestReeferHours !== null && latestReeferHours !== undefined && (
+                    <span className="text-xs text-muted-foreground">
+                      Current hours: <strong>{latestReeferHours.toLocaleString()} h</strong>
+                    </span>
+                  )}
+                </div>
+              )}
               <p className="text-xs text-muted-foreground">
-                Select a specific vehicle or leave empty for fleet-wide maintenance
+                Select a specific vehicle or leave empty for fleet-wide maintenance.
+                {" "}Reefer fleets (suffix F) use hour-based scheduling automatically.
               </p>
             </div>
 
@@ -268,7 +309,8 @@ export function AddScheduleDialog({ open, onOpenChange, onSuccess }: AddSchedule
               </div>
             </div>
 
-            {!odometerBased && (
+            {/* Date-based scheduling — hidden for hours-based REEFER schedules */}
+            {!odometerBased && !isReeferVehicle && (
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="schedule_type">Schedule Type *</Label>
@@ -309,7 +351,7 @@ export function AddScheduleDialog({ open, onOpenChange, onSuccess }: AddSchedule
               </div>
             )}
 
-            {!odometerBased && (
+            {!odometerBased && !isReeferVehicle && (
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="start_date">Start Date *</Label>
@@ -346,38 +388,85 @@ export function AddScheduleDialog({ open, onOpenChange, onSuccess }: AddSchedule
               <Label htmlFor="auto_create_job_card">Auto-create job card when due</Label>
             </div>
 
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="odometer_based"
-                onCheckedChange={(checked) => setValue("odometer_based", checked)}
-              />
-              <Label htmlFor="odometer_based">Odometer-based scheduling</Label>
-            </div>
+            {/* Odometer-based toggle — hidden for REEFER vehicles */}
+            {!isReeferVehicle && (
+              <>
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="odometer_based"
+                    onCheckedChange={(checked) => setValue("odometer_based", checked)}
+                  />
+                  <Label htmlFor="odometer_based">Odometer-based scheduling</Label>
+                </div>
 
-            {odometerBased && (
-              <div className="space-y-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
-                <p className="text-sm font-medium text-blue-800">KM-Based Schedule — no date required</p>
+                {odometerBased && (
+                  <div className="space-y-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
+                    <p className="text-sm font-medium text-blue-800">KM-Based Schedule — no date required</p>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="last_odometer_reading">Previous / Last Service KM *</Label>
+                        <Input
+                          id="last_odometer_reading"
+                          type="number"
+                          placeholder="KM at last service"
+                          {...register("last_odometer_reading", { valueAsNumber: true })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="odometer_interval_km">Service Interval (km) *</Label>
+                        <Input
+                          id="odometer_interval_km"
+                          type="number"
+                          placeholder="e.g. 10000"
+                          {...register("odometer_interval_km", { valueAsNumber: true })}
+                        />
+                      </div>
+                    </div>
+                    {watch("last_odometer_reading") > 0 && watch("odometer_interval_km") > 0 && (
+                      <div className="rounded-md bg-white p-3 border">
+                        <p className="text-sm text-muted-foreground">Next Service Due At</p>
+                        <p className="text-xl font-bold text-blue-700">
+                          {(watch("last_odometer_reading") + watch("odometer_interval_km")).toLocaleString()} km
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          ({watch("last_odometer_reading").toLocaleString()} km + {watch("odometer_interval_km").toLocaleString()} km interval)
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Hours-based scheduling — auto-shown for REEFER vehicles, binds to odometer DB columns */}
+            {isReeferVehicle && (
+              <div className="space-y-4 rounded-lg border border-cyan-200 bg-cyan-50 p-4">
+                <p className="text-sm font-medium text-cyan-800">
+                  ❄️ REEFER Hours-Based Schedule — tracked by operating hours
+                </p>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="last_odometer_reading">Previous / Last Service KM *</Label>
+                    <Label htmlFor="add-last_hours_reading">Current / Last Service Hours *</Label>
                     <Input
-                      id="last_odometer_reading"
+                      id="add-last_hours_reading"
                       type="number"
-                      placeholder="KM at last service"
+                      step="0.1"
+                      placeholder="Hours at last service"
                       {...register("last_odometer_reading", { valueAsNumber: true })}
                     />
-                    {selectedVehicleData?.current_odometer != null && (
+                    {latestReeferHours !== null && latestReeferHours !== undefined && (
                       <p className="text-xs text-muted-foreground">
-                        Vehicle current odometer: {selectedVehicleData.current_odometer.toLocaleString()} km
+                        Latest recorded hours (diesel log): <strong>{latestReeferHours.toLocaleString()} h</strong>
                       </p>
                     )}
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="odometer_interval_km">Service Interval (km) *</Label>
+                    <Label htmlFor="add-hours_interval">Service Interval (hours) *</Label>
                     <Input
-                      id="odometer_interval_km"
+                      id="add-hours_interval"
                       type="number"
-                      placeholder="e.g. 10000"
+                      step="0.1"
+                      placeholder="e.g. 500"
                       {...register("odometer_interval_km", { valueAsNumber: true })}
                     />
                   </div>
@@ -385,11 +474,11 @@ export function AddScheduleDialog({ open, onOpenChange, onSuccess }: AddSchedule
                 {watch("last_odometer_reading") > 0 && watch("odometer_interval_km") > 0 && (
                   <div className="rounded-md bg-white p-3 border">
                     <p className="text-sm text-muted-foreground">Next Service Due At</p>
-                    <p className="text-xl font-bold text-blue-700">
-                      {(watch("last_odometer_reading") + watch("odometer_interval_km")).toLocaleString()} km
+                    <p className="text-xl font-bold text-cyan-700">
+                      {(watch("last_odometer_reading") + watch("odometer_interval_km")).toLocaleString()} hours
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      ({watch("last_odometer_reading").toLocaleString()} km + {watch("odometer_interval_km").toLocaleString()} km interval)
+                      ({watch("last_odometer_reading").toLocaleString()} h + {watch("odometer_interval_km").toLocaleString()} h interval)
                     </p>
                   </div>
                 )}

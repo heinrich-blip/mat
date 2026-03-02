@@ -10,7 +10,7 @@ export interface MaintenanceSchedule {
   // Required fields from actual DB schema
   id: string;
   vehicle_id: string;
-  service_type: string;
+  service_type?: string | null;
   next_due_date: string;
   is_active: boolean;
   created_at: string;
@@ -39,6 +39,8 @@ export interface MaintenanceSchedule {
   odometer_based?: boolean;
   odometer_interval_km?: number | null;
   last_odometer_reading?: number | null;
+  // NOTE: For REEFER fleets (suffix F), odometer_based/odometer_interval_km/last_odometer_reading
+  // are repurposed for hours-based tracking. The UI displays "hours" labels but stores in odometer columns.
   notes?: string | null;
   created_by?: string;
 }

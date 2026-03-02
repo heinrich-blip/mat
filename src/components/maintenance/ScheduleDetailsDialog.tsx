@@ -8,9 +8,11 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { MaintenanceSchedule } from "@/types/maintenance";
+import { getFleetSubcategory, isReeferFleet, FLEET_SUBCATEGORY_META } from "@/utils/fleetCategories";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { AlertCircle, Calendar, CheckCircle, Clock, Edit, Gauge, Smartphone, User, Wrench } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { AlertCircle, Calendar, CheckCircle, Clock, Edit, Gauge, Smartphone, Timer, Trash2, User, Wrench } from "lucide-react";
 import { useState } from "react";
 import { CreateJobCardFromScheduleDialog } from "../dialogs/CreateJobCardFromScheduleDialog";
 import { EditScheduleDialog } from "./EditScheduleDialog";
@@ -37,25 +39,58 @@ export function ScheduleDetailsDialog({
   const [showCreateJobCard, setShowCreateJobCard] = useState(false);
   const [showMobileQuickComplete, setShowMobileQuickComplete] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
-  // Fetch vehicle KM for KM-based schedules (from trips + current_odometer)
-  const { data: vehicleOdometer } = useQuery({
-    queryKey: ["vehicle-km-from-trips", schedule.vehicle_id],
+  // Always fetch vehicle info (fleet_number needed for subcategory detection)
+  const { data: vehicleInfo } = useQuery({
+    queryKey: ["vehicle-info-schedule-details", schedule.vehicle_id],
     queryFn: async () => {
       if (!schedule.vehicle_id) return null;
-      const kmMap = await getVehicleLatestKm([schedule.vehicle_id]);
       const { data: vehicle } = await supabase
         .from("vehicles")
         .select("fleet_number, registration_number")
         .eq("id", schedule.vehicle_id)
         .single();
       return {
-        current_odometer: kmMap[schedule.vehicle_id] || 0,
         fleet_number: vehicle?.fleet_number || null,
         registration_number: vehicle?.registration_number || null,
       };
     },
-    enabled: open && !!schedule.vehicle_id && !!schedule.odometer_based,
+    enabled: open && !!schedule.vehicle_id,
+  });
+
+  const fleetNumber = vehicleInfo?.fleet_number || "";
+  const isReefer = isReeferFleet(fleetNumber);
+  const subcategory = getFleetSubcategory(fleetNumber);
+  const subcategoryMeta = FLEET_SUBCATEGORY_META[subcategory];
+
+  // Fetch vehicle KM for KM-based schedules (from trips)
+  const { data: vehicleOdometer } = useQuery({
+    queryKey: ["vehicle-km-from-trips", schedule.vehicle_id],
+    queryFn: async () => {
+      if (!schedule.vehicle_id) return null;
+      const kmMap = await getVehicleLatestKm([schedule.vehicle_id]);
+      return { current_odometer: kmMap[schedule.vehicle_id] || 0 };
+    },
+    enabled: open && !!schedule.vehicle_id && !!schedule.odometer_based && !isReefer,
+  });
+
+  // Fetch REEFER operating hours from diesel records
+  const { data: reeferHoursData } = useQuery({
+    queryKey: ["reefer-hours-schedule-details", fleetNumber],
+    queryFn: async () => {
+      if (!fleetNumber) return null;
+      const { data } = await supabase
+        .from("reefer_diesel_records")
+        .select("operating_hours, date")
+        .eq("reefer_unit", fleetNumber)
+        .order("date", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return data ? { hours: data.operating_hours, date: data.date } : null;
+    },
+    enabled: open && isReefer && !!fleetNumber,
   });
 
   const { data: history } = useQuery({
@@ -107,6 +142,45 @@ export function ScheduleDetailsDialog({
     }
   };
 
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      // First delete related history records
+      const { error: historyError } = await supabase
+        .from("maintenance_schedule_history")
+        .delete()
+        .eq("schedule_id", schedule.id);
+
+      if (historyError) throw historyError;
+
+      // Then delete the schedule itself
+      const { error } = await supabase
+        .from("maintenance_schedules")
+        .delete()
+        .eq("id", schedule.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Deleted",
+        description: "Maintenance schedule has been permanently deleted",
+      });
+
+      onUpdate();
+      onOpenChange(false);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'An error occurred';
+      toast({
+        title: "Error",
+        description: `Failed to delete schedule: ${errorMessage}`,
+        variant: "destructive",
+      });
+    } finally {
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
+
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case 'critical':
@@ -127,7 +201,14 @@ export function ScheduleDetailsDialog({
       <DialogContent className="max-w-4xl">
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between">
-            <span>{schedule.title}</span>
+            <div className="flex items-center gap-2">
+              <span>{schedule.title}</span>
+              {fleetNumber && (
+                <Badge variant="outline" className={`text-xs ${subcategoryMeta.color}`}>
+                  {subcategory}
+                </Badge>
+              )}
+            </div>
             <Badge variant={getPriorityColor(schedule.priority)}>
               {schedule.priority}
             </Badge>
@@ -166,15 +247,17 @@ export function ScheduleDetailsDialog({
 
                     <div className="space-y-2">
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Clock className="h-4 w-4" />
-                        <span>{schedule.odometer_based ? "Tracking" : "Next Due Date"}</span>
+                        {isReefer ? <Timer className="h-4 w-4" /> : <Clock className="h-4 w-4" />}
+                        <span>{isReefer && schedule.odometer_based ? "Tracking" : schedule.odometer_based ? "Tracking" : "Next Due Date"}</span>
                       </div>
                       <p className="font-medium">
-                        {schedule.odometer_based
-                          ? "KM-based (see below)"
-                          : schedule.next_due_date
-                            ? format(new Date(schedule.next_due_date), "PPP")
-                            : "Not scheduled"}
+                        {isReefer && schedule.odometer_based
+                          ? "Hours-based (see below)"
+                          : schedule.odometer_based
+                            ? "KM-based (see below)"
+                            : schedule.next_due_date
+                              ? format(new Date(schedule.next_due_date), "PPP")
+                              : "Not scheduled"}
                       </p>
                     </div>
 
@@ -201,8 +284,72 @@ export function ScheduleDetailsDialog({
                     </div>
                   )}
 
-                  {/* KM Tracking Section */}
-                  {schedule.odometer_based && schedule.odometer_interval_km && (() => {
+                  {/* REEFER Hours-Based Tracking Section — reads from odometer columns */}
+                  {isReefer && schedule.odometer_based && schedule.odometer_interval_km && (() => {
+                    const currentHours = reeferHoursData?.hours || 0;
+                    const lastReading = schedule.last_odometer_reading || 0;
+                    const hoursInterval = schedule.odometer_interval_km;
+                    const nextServiceHours = lastReading + hoursInterval;
+                    const hoursUsed = currentHours - lastReading;
+                    const progressPercent = Math.min(Math.round((hoursUsed / hoursInterval) * 100), 150);
+                    const remainingHours = nextServiceHours - currentHours;
+                    const isOverdue = remainingHours < 0;
+                    const isApproaching = !isOverdue && remainingHours <= hoursInterval * 0.15;
+                    return (
+                      <Card className={`border ${isOverdue ? 'border-red-300 bg-red-50' : isApproaching ? 'border-amber-300 bg-amber-50' : 'border-cyan-200 bg-cyan-50'}`}>
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm flex items-center gap-2">
+                            <Timer className="h-4 w-4 text-cyan-600" />
+                            REEFER Hours-Based Tracking
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                          <div className="grid gap-3 md:grid-cols-4">
+                            <div>
+                              <p className="text-xs text-muted-foreground">Interval</p>
+                              <p className="font-semibold">{hoursInterval.toLocaleString()} hrs</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Last Service</p>
+                              <p className="font-semibold">{lastReading.toLocaleString()} hrs</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Current Hours</p>
+                              <p className="font-semibold">
+                                {currentHours.toLocaleString()} hrs
+                                {reeferHoursData?.date && (
+                                  <span className="text-xs text-muted-foreground ml-1">
+                                    (as of {format(new Date(reeferHoursData.date), "PP")})
+                                  </span>
+                                )}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Next Service At</p>
+                              <p className="font-semibold">{nextServiceHours.toLocaleString()} hrs</p>
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-xs">
+                              <span>{Math.min(progressPercent, 100)}% used</span>
+                              <span className={isOverdue ? 'text-red-600 font-semibold' : isApproaching ? 'text-amber-600 font-semibold' : ''}>
+                                {isOverdue
+                                  ? `${Math.abs(remainingHours).toLocaleString()} hrs overdue`
+                                  : `${remainingHours.toLocaleString()} hrs remaining`}
+                              </span>
+                            </div>
+                            <Progress
+                              value={Math.min(progressPercent, 100)}
+                              className={`h-3 ${isOverdue ? '[&>div]:bg-red-500' : isApproaching ? '[&>div]:bg-amber-500' : '[&>div]:bg-cyan-500'}`}
+                            />
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })()}
+
+                  {/* KM Tracking Section (non-REEFER only) */}
+                  {!isReefer && schedule.odometer_based && schedule.odometer_interval_km && (() => {
                     const currentOdo = vehicleOdometer?.current_odometer || 0;
                     const lastReading = schedule.last_odometer_reading || 0;
                     const kmStatus = calculateKmStatus(schedule.odometer_interval_km, lastReading, currentOdo);
@@ -277,6 +424,14 @@ export function ScheduleDetailsDialog({
                     >
                       <Wrench className="mr-2 h-4 w-4" />
                       Create Job Card
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={() => setShowDeleteConfirm(true)}
+                      disabled={deleting}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      {deleting ? "Deleting..." : "Delete Schedule"}
                     </Button>
                   </div>
                 </CardContent>
@@ -357,6 +512,27 @@ export function ScheduleDetailsDialog({
           });
         }}
       />
+
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Maintenance Schedule</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to permanently delete &quot;{schedule.title}&quot;? This will also remove all associated maintenance history records. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }

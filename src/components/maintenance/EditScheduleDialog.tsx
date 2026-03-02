@@ -1,3 +1,4 @@
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -9,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { MaintenanceSchedule } from "@/types/maintenance";
+import { getFleetSubcategory, isReeferFleet, FLEET_SUBCATEGORY_META } from "@/utils/fleetCategories";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -88,29 +90,52 @@ export function EditScheduleDialog({ open, onOpenChange, schedule, onSuccess }: 
   const intervalKm = watch("odometer_interval_km");
   const lastOdometerReading = watch("last_odometer_reading");
 
-  // Compute next service KM
-  const nextServiceKm = odometerBased && intervalKm && lastOdometerReading
+  // Determine if selected vehicle is a REEFER
+  const selectedVehicle = vehicles.find(v => v.id === selectedVehicleId);
+  const selectedFleetNumber = selectedVehicle?.fleet_number ?? null;
+  const isReeferVehicle = isReeferFleet(selectedFleetNumber);
+  const fleetSubcategory = selectedFleetNumber ? getFleetSubcategory(selectedFleetNumber) : null;
+
+  // Fetch the most recent operating hours from reefer_diesel_records for REEFERS
+  const { data: latestReeferHours } = useQuery({
+    queryKey: ["reefer-latest-hours", selectedFleetNumber],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("reefer_diesel_records")
+        .select("operating_hours")
+        .eq("reefer_unit", selectedFleetNumber!)
+        .not("operating_hours", "is", null)
+        .order("date", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data?.operating_hours ?? null;
+    },
+    enabled: isReeferVehicle && !!selectedFleetNumber,
+  });
+
+  // Compute next service value (works for both KM and hours — same DB columns)
+  const nextServiceValue = odometerBased && intervalKm && lastOdometerReading
     ? lastOdometerReading + intervalKm
     : null;
 
-  // Auto-populate last_odometer_reading from vehicle's current_odometer
-  const { data: selectedVehicleData } = useQuery({
-    queryKey: ["vehicle-odometer", selectedVehicleId],
+  // Fetch latest KM from trips for non-REEFER vehicles
+  const { data: vehicleLatestKm } = useQuery({
+    queryKey: ["vehicle-latest-km", selectedVehicleId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("vehicles")
-        .select("current_odometer")
-        .eq("id", selectedVehicleId)
-        .single();
-      if (error) throw error;
-      return data;
+      if (!selectedVehicleId || selectedVehicleId === "none") return null;
+      const { getVehicleLatestKm } = await import("@/lib/maintenanceKmTracking");
+      const kmMap = await getVehicleLatestKm([selectedVehicleId]);
+      return kmMap[selectedVehicleId] || null;
     },
-    enabled: !!selectedVehicleId && selectedVehicleId !== "none",
+    enabled: !!selectedVehicleId && selectedVehicleId !== "none" && !isReeferVehicle,
   });
 
   const onSubmit = async (data: Record<string, unknown>) => {
     setLoading(true);
     try {
+      const isOdometerBased = data.odometer_based as boolean;
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const updateData: Record<string, any> = {
         title: data.title,
@@ -125,18 +150,13 @@ export function EditScheduleDialog({ open, onOpenChange, schedule, onSuccess }: 
         assigned_to: data.assigned_to || null,
         estimated_duration_hours: data.estimated_duration_hours,
         auto_create_job_card: data.auto_create_job_card,
-        odometer_based: data.odometer_based,
-        odometer_interval_km: data.odometer_interval_km,
-        last_odometer_reading: data.last_odometer_reading || 0,
+        // For REEFERs: odometer columns store hours values; for others: km values
+        odometer_based: isReeferVehicle ? true : isOdometerBased,
+        odometer_interval_km: (isReeferVehicle || isOdometerBased) ? data.odometer_interval_km : null,
+        last_odometer_reading: (isReeferVehicle || isOdometerBased) ? (data.last_odometer_reading || 0) : null,
         notes: data.notes || null,
         vehicle_id: data.vehicle_id === "none" ? null : data.vehicle_id,
       };
-
-      // If NOT KM-based, clear odometer fields
-      if (!data.odometer_based) {
-        updateData.odometer_interval_km = null;
-        updateData.last_odometer_reading = null;
-      }
 
       const { error } = await supabase
         .from("maintenance_schedules")
@@ -190,7 +210,14 @@ export function EditScheduleDialog({ open, onOpenChange, schedule, onSuccess }: 
               <Label htmlFor="edit-vehicle_id">Vehicle</Label>
               <Select
                 value={watch("vehicle_id")}
-                onValueChange={(value) => setValue("vehicle_id", value)}
+                onValueChange={(value) => {
+                  setValue("vehicle_id", value);
+                  // Auto-set odometer_based when switching to a REEFER
+                  const v = vehicles.find(veh => veh.id === value);
+                  if (v && isReeferFleet(v.fleet_number)) {
+                    setValue("odometer_based", true);
+                  }
+                }}
                 disabled={vehiclesLoading}
               >
                 <SelectTrigger>
@@ -198,14 +225,33 @@ export function EditScheduleDialog({ open, onOpenChange, schedule, onSuccess }: 
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">None (Fleet-wide schedule)</SelectItem>
-                  {vehicles.map((vehicle) => (
-                    <SelectItem key={vehicle.id} value={vehicle.id}>
-                      {vehicle.fleet_number || vehicle.registration_number} - {vehicle.registration_number}
-                      {vehicle.vehicle_type && ` (${vehicle.vehicle_type})`}
-                    </SelectItem>
-                  ))}
+                  {vehicles.map((vehicle) => {
+                    const sub = getFleetSubcategory(vehicle.fleet_number);
+                    const meta = FLEET_SUBCATEGORY_META[sub];
+                    return (
+                      <SelectItem key={vehicle.id} value={vehicle.id}>
+                        {vehicle.fleet_number || vehicle.registration_number} - {vehicle.registration_number}
+                        {vehicle.vehicle_type && ` (${vehicle.vehicle_type})`}
+                        {` [${meta.label}]`}
+                        {isReeferFleet(vehicle.fleet_number) && " ❄️"}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
+              {selectedVehicleId && selectedVehicleId !== "none" && fleetSubcategory && (
+                <div className="flex items-center gap-2 mt-1">
+                  <Badge className={`${FLEET_SUBCATEGORY_META[fleetSubcategory].color} border text-xs font-semibold`}>
+                    {isReeferVehicle ? "❄️ " : ""}{FLEET_SUBCATEGORY_META[fleetSubcategory].label}
+                    {isReeferVehicle && " — Hours-based scheduling"}
+                  </Badge>
+                  {isReeferVehicle && latestReeferHours !== null && latestReeferHours !== undefined && (
+                    <span className="text-xs text-muted-foreground">
+                      Current hours: <strong>{latestReeferHours.toLocaleString()} h</strong>
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -252,44 +298,47 @@ export function EditScheduleDialog({ open, onOpenChange, schedule, onSuccess }: 
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="edit-schedule_type">Schedule Type *</Label>
-                <Select
-                  value={watch("schedule_type")}
-                  onValueChange={(value) => setValue("schedule_type", value as "one_time" | "recurring")}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="one_time">One Time</SelectItem>
-                    <SelectItem value="recurring">Recurring</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {scheduleType === "recurring" && !odometerBased && (
+            {/* Date-based scheduling — hidden for REEFER hours-based schedules */}
+            {!isReeferVehicle && (
+              <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="edit-frequency">Frequency *</Label>
+                  <Label htmlFor="edit-schedule_type">Schedule Type *</Label>
                   <Select
-                    value={watch("frequency") || "monthly"}
-                    onValueChange={(value) => setValue("frequency", value as "daily" | "weekly" | "monthly" | "quarterly" | "yearly")}
+                    value={watch("schedule_type")}
+                    onValueChange={(value) => setValue("schedule_type", value as "one_time" | "recurring")}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select frequency" />
+                      <SelectValue placeholder="Select type" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="daily">Daily</SelectItem>
-                      <SelectItem value="weekly">Weekly</SelectItem>
-                      <SelectItem value="monthly">Monthly</SelectItem>
-                      <SelectItem value="quarterly">Quarterly</SelectItem>
-                      <SelectItem value="yearly">Yearly</SelectItem>
+                      <SelectItem value="one_time">One Time</SelectItem>
+                      <SelectItem value="recurring">Recurring</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-              )}
-            </div>
+
+                {scheduleType === "recurring" && !odometerBased && (
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-frequency">Frequency *</Label>
+                    <Select
+                      value={watch("frequency") || "monthly"}
+                      onValueChange={(value) => setValue("frequency", value as "daily" | "weekly" | "monthly" | "quarterly" | "yearly")}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select frequency" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="daily">Daily</SelectItem>
+                        <SelectItem value="weekly">Weekly</SelectItem>
+                        <SelectItem value="monthly">Monthly</SelectItem>
+                        <SelectItem value="quarterly">Quarterly</SelectItem>
+                        <SelectItem value="yearly">Yearly</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="edit-assigned_to">Assigned To</Label>
@@ -305,49 +354,99 @@ export function EditScheduleDialog({ open, onOpenChange, schedule, onSuccess }: 
               <Label htmlFor="edit-auto_create_job_card">Auto-create job card when due</Label>
             </div>
 
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="edit-odometer_based"
-                checked={odometerBased}
-                onCheckedChange={(checked) => setValue("odometer_based", checked)}
-              />
-              <Label htmlFor="edit-odometer_based">KM-based scheduling (instead of date)</Label>
-            </div>
+            {/* Odometer-based toggle — hidden for REEFER vehicles (auto-enabled) */}
+            {!isReeferVehicle && (
+              <>
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="edit-odometer_based"
+                    checked={odometerBased}
+                    onCheckedChange={(checked) => setValue("odometer_based", checked)}
+                  />
+                  <Label htmlFor="edit-odometer_based">KM-based scheduling (instead of date)</Label>
+                </div>
 
-            {odometerBased && (
-              <div className="space-y-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
-                <p className="text-sm font-medium text-blue-800">KM-Based Schedule Configuration</p>
+                {odometerBased && (
+                  <div className="space-y-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
+                    <p className="text-sm font-medium text-blue-800">KM-Based Schedule Configuration</p>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-last_odometer_reading">Previous / Last Service KM *</Label>
+                        <Input
+                          id="edit-last_odometer_reading"
+                          type="number"
+                          placeholder="KM at last service"
+                          {...register("last_odometer_reading", { valueAsNumber: true })}
+                        />
+                        {vehicleLatestKm != null && (
+                          <p className="text-xs text-muted-foreground">
+                            Vehicle latest odometer: {vehicleLatestKm.toLocaleString()} km
+                          </p>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-odometer_interval_km">Service Interval (km) *</Label>
+                        <Input
+                          id="edit-odometer_interval_km"
+                          type="number"
+                          placeholder="e.g. 10000"
+                          {...register("odometer_interval_km", { valueAsNumber: true })}
+                        />
+                      </div>
+                    </div>
+                    {nextServiceValue !== null && (
+                      <div className="rounded-md bg-white p-3 border">
+                        <p className="text-sm text-muted-foreground">Next Service Due At</p>
+                        <p className="text-xl font-bold text-blue-700">{nextServiceValue.toLocaleString()} km</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          ({lastOdometerReading?.toLocaleString()} km + {intervalKm?.toLocaleString()} km interval)
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Hours-based scheduling — auto-shown for REEFER vehicles, uses odometer DB columns */}
+            {isReeferVehicle && (
+              <div className="space-y-4 rounded-lg border border-cyan-200 bg-cyan-50 p-4">
+                <p className="text-sm font-medium text-cyan-800">
+                  ❄️ REEFER Hours-Based Schedule — tracked by operating hours
+                </p>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="edit-last_odometer_reading">Previous / Last Service KM *</Label>
+                    <Label htmlFor="edit-last_hours_reading">Current / Last Service Hours *</Label>
                     <Input
-                      id="edit-last_odometer_reading"
+                      id="edit-last_hours_reading"
                       type="number"
-                      placeholder="KM at last service"
+                      step="0.1"
+                      placeholder="Hours at last service"
                       {...register("last_odometer_reading", { valueAsNumber: true })}
                     />
-                    {selectedVehicleData?.current_odometer != null && (
+                    {latestReeferHours !== null && latestReeferHours !== undefined && (
                       <p className="text-xs text-muted-foreground">
-                        Vehicle current odometer: {selectedVehicleData.current_odometer.toLocaleString()} km
+                        Latest recorded hours (diesel log): <strong>{latestReeferHours.toLocaleString()} h</strong>
                       </p>
                     )}
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="edit-odometer_interval_km">Service Interval (km) *</Label>
+                    <Label htmlFor="edit-hours_interval">Service Interval (hours) *</Label>
                     <Input
-                      id="edit-odometer_interval_km"
+                      id="edit-hours_interval"
                       type="number"
-                      placeholder="e.g. 10000"
+                      step="0.1"
+                      placeholder="e.g. 500"
                       {...register("odometer_interval_km", { valueAsNumber: true })}
                     />
                   </div>
                 </div>
-                {nextServiceKm !== null && (
+                {nextServiceValue !== null && (
                   <div className="rounded-md bg-white p-3 border">
                     <p className="text-sm text-muted-foreground">Next Service Due At</p>
-                    <p className="text-xl font-bold text-blue-700">{nextServiceKm.toLocaleString()} km</p>
+                    <p className="text-xl font-bold text-cyan-700">{nextServiceValue.toLocaleString()} hours</p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      ({lastOdometerReading?.toLocaleString()} km + {intervalKm?.toLocaleString()} km interval)
+                      ({lastOdometerReading?.toLocaleString()} h + {intervalKm?.toLocaleString()} h interval)
                     </p>
                   </div>
                 )}

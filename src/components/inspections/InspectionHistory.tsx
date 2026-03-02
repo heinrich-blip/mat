@@ -1,4 +1,3 @@
-
 import
   {
     AlertDialog,
@@ -55,6 +54,13 @@ interface InspectionHistoryRecord {
   status: string;
 }
 
+interface FaultDetail {
+  fault_description: string;
+  severity: string;
+  corrective_action_status: string | null;
+  corrective_action_notes: string | null;
+}
+
 export function InspectionHistory() {
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -68,6 +74,8 @@ export function InspectionHistory() {
   const [showCorrectiveAction, setShowCorrectiveAction] = useState(false);
   const [showRootCauseAnalysis, setShowRootCauseAnalysis] = useState(false);
   const [showDeleteAlert, setShowDeleteAlert] = useState(false);
+  const [showFaultDetails, setShowFaultDetails] = useState(false);
+  const [selectedFaults, setSelectedFaults] = useState<FaultDetail[]>([]);
   const [faultsForCorrectiveAction, setFaultsForCorrectiveAction] = useState<Array<{
     id: string;
     fault_description: string;
@@ -109,10 +117,34 @@ export function InspectionHistory() {
       // Fetch fault counts for each inspection
       const inspectionsWithFaults = await Promise.all(
         (data || []).map(async (inspection) => {
-          const { count } = await supabase
+          // Fetch actual faults (excluding NA/default entries)
+          const { data: faults } = await supabase
             .from("inspection_faults")
-            .select("*", { count: "exact", head: true })
+            .select("id, fault_description, corrective_action_status")
             .eq("inspection_id", inspection.id);
+
+          // Count only REAL faults (not NA/default)
+          const realFaultCount = (faults || []).filter(f => 
+            f.fault_description && 
+            f.fault_description !== "NA" && 
+            f.fault_description !== "N/A" && 
+            f.fault_description.trim() !== ""
+          ).length;
+
+          // Check if any REAL faults have pending or no corrective action
+          const hasPendingAction = (faults || []).some(f => 
+            f.fault_description && 
+            f.fault_description !== "NA" && 
+            f.fault_description !== "N/A" && 
+            f.fault_description.trim() !== "" &&
+            (!f.corrective_action_status || f.corrective_action_status === 'pending')
+          );
+
+          // Determine corrective action status based on real faults
+          let correctiveActionStatus = "";
+          if (realFaultCount > 0) {
+            correctiveActionStatus = hasPendingAction ? "PENDING" : "TAKEN";
+          }
 
           // Fetch linked work orders
           const { data: workOrders } = await supabase
@@ -130,8 +162,8 @@ export function InspectionHistory() {
             vehicle_make: inspection.vehicle_make || undefined,
             vehicle_model: inspection.vehicle_model || undefined,
             inspector_name: inspection.inspector_name,
-            fault_count: count || 0,
-            corrective_action_status: count && count > 0 ? "TAKEN" : "NOT TAKEN",
+            fault_count: realFaultCount, // Use real fault count, not total
+            corrective_action_status: correctiveActionStatus,
             linked_work_order: workOrders?.job_number,
             inspection_type: inspection.inspection_type,
             notes: inspection.notes || undefined,
@@ -156,7 +188,7 @@ export function InspectionHistory() {
 
   // Action handlers
   const handleView = (inspection: InspectionHistoryRecord) => {
-    window.location.href = `/inspections/${inspection.id}`;
+    navigate(`/inspections/${inspection.id}`);
   };
 
   const handleShare = (inspection: InspectionHistoryRecord) => {
@@ -171,13 +203,49 @@ export function InspectionHistory() {
 
   const handleCreateWorkOrder = (inspection: InspectionHistoryRecord) => {
     // Navigate to job cards page with pre-filled inspection data
-    window.location.href = `/job-cards?inspection_id=${inspection.id}`;
+    navigate(`/job-cards?inspection_id=${inspection.id}`);
+  };
+
+  const handleViewFaults = async (inspection: InspectionHistoryRecord) => {
+    // Fetch faults for this inspection
+    const { data: faults, error } = await supabase
+      .from("inspection_faults")
+      .select("fault_description, severity, corrective_action_status, corrective_action_notes")
+      .eq("inspection_id", inspection.id);
+
+    if (error) {
+      toast({
+        title: "Error",
+        description: "Failed to load faults",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Filter out NA/default faults
+    const realFaults = (faults || []).filter(f => 
+      f.fault_description && 
+      f.fault_description !== "NA" && 
+      f.fault_description !== "N/A" && 
+      f.fault_description.trim() !== ""
+    );
+
+    if (realFaults.length === 0) {
+      toast({
+        title: "No Faults",
+        description: "This inspection has no recorded faults",
+      });
+      return;
+    }
+
+    setSelectedFaults(realFaults);
+    setShowFaultDetails(true);
   };
 
   const handleCorrectiveAction = async (inspection: InspectionHistoryRecord) => {
     setSelectedInspection(inspection);
 
-    // Fetch faults for this inspection
+    // Fetch faults for this inspection (only real faults)
     const { data: faults, error } = await supabase
       .from("inspection_faults")
       .select("id, fault_description, severity, corrective_action_status, corrective_action_notes")
@@ -192,7 +260,15 @@ export function InspectionHistory() {
       return;
     }
 
-    if (!faults || faults.length === 0) {
+    // Filter out NA/default faults
+    const realFaults = (faults || []).filter(f => 
+      f.fault_description && 
+      f.fault_description !== "NA" && 
+      f.fault_description !== "N/A" && 
+      f.fault_description.trim() !== ""
+    );
+
+    if (realFaults.length === 0) {
       toast({
         title: "No Faults Found",
         description: "This inspection has no recorded faults",
@@ -200,7 +276,7 @@ export function InspectionHistory() {
       return;
     }
 
-    setFaultsForCorrectiveAction(faults);
+    setFaultsForCorrectiveAction(realFaults);
     setShowCorrectiveAction(true);
   };
 
@@ -328,6 +404,15 @@ export function InspectionHistory() {
     ? sortedInspections
     : sortedInspections;
 
+  const getSeverityVariant = (severity: string) => {
+    switch (severity) {
+      case "critical": return "destructive";
+      case "high": return "destructive";
+      case "medium": return "default";
+      default: return "secondary";
+    }
+  };
+
   const exportInspectionsToExcel = useCallback(async () => {
     try {
       const wb = new ExcelJS.Workbook();
@@ -388,7 +473,7 @@ export function InspectionHistory() {
           insp.vehicle_model || '',
           insp.inspector_name,
           insp.fault_count,
-          insp.corrective_action_status,
+          insp.corrective_action_status || '',
           insp.linked_work_order || '',
         ];
         row.eachCell(c => { c.border = bdr; c.font = bodyFont; c.alignment = { vertical: 'middle' }; });
@@ -403,12 +488,10 @@ export function InspectionHistory() {
 
         const caCell = row.getCell(8);
         const caStatus = insp.corrective_action_status?.toLowerCase();
-        if (caStatus === 'completed' || caStatus === 'resolved') {
+        if (caStatus === 'taken') {
           caCell.font = { ...bodyFont, color: { argb: '16A34A' }, bold: true };
-        } else if (caStatus === 'pending' || caStatus === 'open') {
+        } else if (caStatus === 'pending') {
           caCell.font = { ...bodyFont, color: { argb: 'D97706' }, bold: true };
-        } else if (caStatus === 'overdue') {
-          caCell.font = { ...bodyFont, color: { argb: 'DC2626' }, bold: true };
         }
       });
 
@@ -478,7 +561,7 @@ export function InspectionHistory() {
           [insp.vehicle_make, insp.vehicle_model].filter(Boolean).join(' ') || '-',
           insp.inspector_name,
           insp.fault_count.toString(),
-          insp.corrective_action_status,
+          insp.corrective_action_status || '',
           insp.linked_work_order || '-',
         ]),
         theme: 'striped',
@@ -611,6 +694,7 @@ export function InspectionHistory() {
                         onViewPDF={() => handleViewPDF(inspection)}
                         onArchive={() => handleArchive(inspection)}
                         onDelete={() => handleDelete(inspection)}
+                        hasFaultsNeedingAction={inspection.fault_count > 0 && inspection.corrective_action_status === "PENDING"}
                       />
                     </TableCell>
                     <TableCell className="font-medium">{inspection.inspection_number}</TableCell>
@@ -644,12 +728,22 @@ export function InspectionHistory() {
                     <TableCell>{inspection.inspector_name}</TableCell>
                     <TableCell className="text-center">
                       {inspection.fault_count > 0 ? (
-                        <Badge variant="destructive" className="gap-1">
+                        <Badge 
+                          variant="destructive" 
+                          className="gap-1 cursor-pointer hover:bg-red-700 transition-colors"
+                          onClick={() => handleViewFaults(inspection)}
+                          title="Click to view faults"
+                        >
                           <TriangleAlert className="h-3 w-3" />
                           {inspection.fault_count}
                         </Badge>
                       ) : (
-                        <Badge variant="outline">NA</Badge>
+                        <Badge 
+                          variant="outline" 
+                          className="text-muted-foreground cursor-default"
+                        >
+                          None
+                        </Badge>
                       )}
                     </TableCell>
                     <TableCell className="text-center">
@@ -657,9 +751,11 @@ export function InspectionHistory() {
                         <Badge variant="default" className="bg-green-600 hover:bg-green-700">
                           TAKEN
                         </Badge>
-                      ) : (
-                        <Badge variant="destructive">NOT TAKEN</Badge>
-                      )}
+                      ) : inspection.corrective_action_status === "PENDING" ? (
+                        <Badge variant="default" className="bg-yellow-600 hover:bg-yellow-700">
+                          PENDING
+                        </Badge>
+                      ) : null /* Show nothing when there are no faults */}
                     </TableCell>
                     <TableCell>
                       {inspection.linked_work_order ? (
@@ -668,7 +764,7 @@ export function InspectionHistory() {
                           size="sm"
                           className="text-blue-600 hover:text-blue-800 p-0 h-auto"
                           onClick={() => {
-                            window.location.href = `/job-cards?search=${inspection.linked_work_order}`;
+                            navigate(`/job-cards?search=${inspection.linked_work_order}`);
                           }}
                         >
                           {inspection.linked_work_order}
@@ -759,6 +855,51 @@ export function InspectionHistory() {
           }}
         />
       )}
+
+      {/* Fault Details Dialog */}
+      <AlertDialog open={showFaultDetails} onOpenChange={setShowFaultDetails}>
+        <AlertDialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <TriangleAlert className="h-5 w-5 text-destructive" />
+              Fault Details
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-4 mt-4">
+                {selectedFaults.map((fault, index) => (
+                  <div key={index} className="border rounded-lg p-4 space-y-2">
+                    <div className="flex items-start justify-between">
+                      <p className="font-medium">{fault.fault_description}</p>
+                      <Badge variant={getSeverityVariant(fault.severity)}>
+                        {fault.severity}
+                      </Badge>
+                    </div>
+                    {fault.corrective_action_status && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">Status:</span>
+                        <Badge variant={fault.corrective_action_status === "fixed" ? "default" : "secondary"}>
+                          {fault.corrective_action_status}
+                        </Badge>
+                      </div>
+                    )}
+                    {fault.corrective_action_notes && (
+                      <div className="text-sm">
+                        <span className="font-medium">Notes:</span>
+                        <p className="text-muted-foreground mt-1">{fault.corrective_action_notes}</p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setShowFaultDetails(false)}>
+              Close
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Delete Confirmation Alert */}
       <AlertDialog open={showDeleteAlert} onOpenChange={setShowDeleteAlert}>
