@@ -17,8 +17,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useOperations } from '@/contexts/OperationsContext';
 import { toast } from '@/hooks/use-toast';
 import { CostEntry } from '@/types/operations';
-import { AlertTriangle, CheckCircle, Edit, FileText, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Edit, FileText, Plus, ShieldCheck, Trash2 } from 'lucide-react';
 import { useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 
 interface TripCostManagerProps {
   tripId: string;
@@ -32,7 +34,10 @@ const TripCostManager = ({ tripId, route, costs, onRefresh, onResolveFlag }: Tri
   const [showCostForm, setShowCostForm] = useState(false);
   const [selectedCost, setSelectedCost] = useState<CostEntry | null>(null);
   const [costToDelete, setCostToDelete] = useState<CostEntry | null>(null);
+  const [costToApprove, setCostToApprove] = useState<CostEntry | null>(null);
+  const [isApproving, setIsApproving] = useState(false);
   const { deleteCostEntry } = useOperations();
+  const { user } = useAuth();
 
   const handleDelete = async () => {
     if (!costToDelete) return;
@@ -54,6 +59,44 @@ const TripCostManager = ({ tripId, route, costs, onRefresh, onResolveFlag }: Tri
     }
   };
 
+  const handleApproveCost = async () => {
+    if (!costToApprove) return;
+
+    setIsApproving(true);
+    try {
+      const { error } = await supabase
+        .from('cost_entries')
+        .update({
+          investigation_status: 'resolved',
+          investigation_notes: costToApprove.investigation_notes
+            ? `${costToApprove.investigation_notes}\n\n--- APPROVED ---\nApproved by ${user?.email || 'admin'} on ${new Date().toLocaleDateString('en-ZA')}`
+            : `Approved by ${user?.email || 'admin'} on ${new Date().toLocaleDateString('en-ZA')}`,
+          resolved_at: new Date().toISOString(),
+          resolved_by: user?.email || 'admin',
+        })
+        .eq('id', costToApprove.id);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Cost Approved',
+        description: `${costToApprove.category}${costToApprove.sub_category ? ' – ' + costToApprove.sub_category : ''} has been approved.`,
+      });
+
+      setCostToApprove(null);
+      onRefresh();
+    } catch (err) {
+      console.error('Error approving cost:', err);
+      toast({
+        title: 'Error',
+        description: 'Failed to approve cost entry.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsApproving(false);
+    }
+  };
+
   const formatCurrency = (amount: number, currency: string = 'USD') => {
     const symbol = currency === 'USD' ? '$' : 'R';
     return `${symbol}${amount.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -64,7 +107,16 @@ const TripCostManager = ({ tripId, route, costs, onRefresh, onResolveFlag }: Tri
   };
 
   const getStatusBadge = (cost: CostEntry) => {
-    if (!cost.is_flagged) {
+    if (cost.is_flagged && cost.investigation_status !== 'resolved') {
+      return (
+        <Badge variant="destructive">
+          <AlertTriangle className="w-3 h-3 mr-1" />
+          Flagged
+        </Badge>
+      );
+    }
+
+    if (cost.investigation_status === 'resolved') {
       return (
         <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
           <CheckCircle className="w-3 h-3 mr-1" />
@@ -73,19 +125,11 @@ const TripCostManager = ({ tripId, route, costs, onRefresh, onResolveFlag }: Tri
       );
     }
 
-    if (cost.investigation_status === 'resolved') {
-      return (
-        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-          <CheckCircle className="w-3 h-3 mr-1" />
-          Resolved
-        </Badge>
-      );
-    }
-
+    // Unflagged but not yet explicitly approved
     return (
-      <Badge variant="destructive">
+      <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
         <AlertTriangle className="w-3 h-3 mr-1" />
-        Flagged
+        Pending Verification
       </Badge>
     );
   };
@@ -199,6 +243,17 @@ const TripCostManager = ({ tripId, route, costs, onRefresh, onResolveFlag }: Tri
                   </div>
 
                   <div className="flex flex-col gap-2 ml-4">
+                    {!cost.is_flagged && cost.investigation_status !== 'resolved' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-emerald-600 border-emerald-300 hover:bg-emerald-50"
+                        onClick={() => setCostToApprove(cost)}
+                      >
+                        <ShieldCheck className="w-3 h-3 mr-1" />
+                        Verify
+                      </Button>
+                    )}
                     {cost.is_flagged && cost.investigation_status !== 'resolved' && (
                       <Button
                         size="sm"
@@ -252,6 +307,52 @@ const TripCostManager = ({ tripId, route, costs, onRefresh, onResolveFlag }: Tri
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Approve Cost Confirmation Dialog */}
+      <AlertDialog open={!!costToApprove} onOpenChange={() => setCostToApprove(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-emerald-600" />
+              Approve Cost
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>Are you sure you want to approve this cost entry?</p>
+                {costToApprove && (
+                  <div className="rounded-lg border bg-muted/50 p-3 space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Category</span>
+                      <span className="font-medium">{costToApprove.category}{costToApprove.sub_category ? ` – ${costToApprove.sub_category}` : ''}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Amount</span>
+                      <span className="font-medium">{formatCurrency(costToApprove.amount, costToApprove.currency || 'USD')}</span>
+                    </div>
+                    {costToApprove.flag_reason && (
+                      <div className="pt-2 border-t">
+                        <span className="text-muted-foreground">Flag Reason</span>
+                        <p className="mt-1 text-amber-700 font-medium">{costToApprove.flag_reason}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">This will mark the cost as verified and approved.</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isApproving}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleApproveCost}
+              disabled={isApproving}
+              className="bg-emerald-600 text-white hover:bg-emerald-700"
+            >
+              {isApproving ? 'Approving...' : 'Approve Cost'}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

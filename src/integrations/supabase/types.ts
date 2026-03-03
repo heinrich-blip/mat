@@ -2573,6 +2573,65 @@ export type Database = {
         }
         Relationships: []
       }
+      driver_documents: {
+        Row: {
+          created_at: string | null
+          document_number: string | null
+          document_type: Database["public"]["Enums"]["driver_document_type"]
+          driver_id: string
+          expiry_date: string | null
+          file_name: string | null
+          file_path: string | null
+          file_size: number | null
+          file_url: string | null
+          id: string
+          mime_type: string | null
+          notes: string | null
+          updated_at: string | null
+          uploaded_by: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          document_number?: string | null
+          document_type: Database["public"]["Enums"]["driver_document_type"]
+          driver_id: string
+          expiry_date?: string | null
+          file_name?: string | null
+          file_path?: string | null
+          file_size?: number | null
+          file_url?: string | null
+          id?: string
+          mime_type?: string | null
+          notes?: string | null
+          updated_at?: string | null
+          uploaded_by?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          document_number?: string | null
+          document_type?: Database["public"]["Enums"]["driver_document_type"]
+          driver_id?: string
+          expiry_date?: string | null
+          file_name?: string | null
+          file_path?: string | null
+          file_size?: number | null
+          file_url?: string | null
+          id?: string
+          mime_type?: string | null
+          notes?: string | null
+          updated_at?: string | null
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "driver_documents_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "drivers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       driver_vehicle_assignments: {
         Row: {
           assigned_at: string
@@ -5017,6 +5076,7 @@ export type Database = {
           supplier: string | null
           unit_price: number | null
           updated_at: string | null
+          vendor_id: string | null
           warranty_claim_contact: string | null
           warranty_end_date: string | null
           warranty_notes: string | null
@@ -5038,6 +5098,7 @@ export type Database = {
           supplier?: string | null
           unit_price?: number | null
           updated_at?: string | null
+          vendor_id?: string | null
           warranty_claim_contact?: string | null
           warranty_end_date?: string | null
           warranty_notes?: string | null
@@ -5059,6 +5120,7 @@ export type Database = {
           supplier?: string | null
           unit_price?: number | null
           updated_at?: string | null
+          vendor_id?: string | null
           warranty_claim_contact?: string | null
           warranty_end_date?: string | null
           warranty_notes?: string | null
@@ -5067,7 +5129,15 @@ export type Database = {
           warranty_start_date?: string | null
           warranty_terms?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "inventory_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       inventory_items: {
         Row: {
@@ -6427,6 +6497,8 @@ export type Database = {
       }
       parts_requests: {
         Row: {
+          allocated_at: string | null
+          allocated_to_job_card: boolean | null
           approved_at: string | null
           approved_by: string | null
           cash_manager_approval_date: string | null
@@ -6448,7 +6520,9 @@ export type Database = {
           ordered_by: string | null
           part_name: string
           part_number: string | null
+          procurement_started: boolean | null
           quantity: number
+          quotes: Json | null
           received_by: string | null
           received_date: string | null
           received_quantity: number | null
@@ -6464,9 +6538,12 @@ export type Database = {
           total_price: number | null
           unit_price: number | null
           updated_at: string | null
+          urgency_level: string | null
           vendor_id: string | null
         }
         Insert: {
+          allocated_at?: string | null
+          allocated_to_job_card?: boolean | null
           approved_at?: string | null
           approved_by?: string | null
           cash_manager_approval_date?: string | null
@@ -6488,7 +6565,9 @@ export type Database = {
           ordered_by?: string | null
           part_name: string
           part_number?: string | null
+          procurement_started?: boolean | null
           quantity: number
+          quotes?: Json | null
           received_by?: string | null
           received_date?: string | null
           received_quantity?: number | null
@@ -6504,9 +6583,12 @@ export type Database = {
           total_price?: number | null
           unit_price?: number | null
           updated_at?: string | null
+          urgency_level?: string | null
           vendor_id?: string | null
         }
         Update: {
+          allocated_at?: string | null
+          allocated_to_job_card?: boolean | null
           approved_at?: string | null
           approved_by?: string | null
           cash_manager_approval_date?: string | null
@@ -6528,7 +6610,9 @@ export type Database = {
           ordered_by?: string | null
           part_name?: string
           part_number?: string | null
+          procurement_started?: boolean | null
           quantity?: number
+          quotes?: Json | null
           received_by?: string | null
           received_date?: string | null
           received_quantity?: number | null
@@ -6544,6 +6628,7 @@ export type Database = {
           total_price?: number | null
           unit_price?: number | null
           updated_at?: string | null
+          urgency_level?: string | null
           vendor_id?: string | null
         }
         Relationships: [
@@ -9521,6 +9606,7 @@ export type Database = {
         Row: {
           active: boolean | null
           created_at: string | null
+          current_odometer: number | null
           engine_specs: string | null
           fleet_number: string | null
           id: string
@@ -9537,6 +9623,7 @@ export type Database = {
         Insert: {
           active?: boolean | null
           created_at?: string | null
+          current_odometer?: number | null
           engine_specs?: string | null
           fleet_number?: string | null
           id?: string
@@ -9553,6 +9640,7 @@ export type Database = {
         Update: {
           active?: boolean | null
           created_at?: string | null
+          current_odometer?: number | null
           engine_specs?: string | null
           fleet_number?: string | null
           id?: string
@@ -11630,6 +11718,10 @@ export type Database = {
         }[]
       }
       calculate_transit_time: { Args: { p_load_id: string }; Returns: unknown }
+      cascade_driver_name_update: {
+        Args: { p_new_name: string; p_old_name: string }
+        Returns: undefined
+      }
       check_geofence_entry: {
         Args: { p_latitude: number; p_longitude: number; p_vehicle_id: string }
         Returns: boolean
@@ -11986,6 +12078,13 @@ export type Database = {
         | "quality_check"
         | "completion_certificate"
         | "other"
+      driver_document_type:
+        | "license"
+        | "pdp"
+        | "passport"
+        | "medical"
+        | "retest"
+        | "defensive_driving"
       driver_status: "active" | "inactive" | "suspended" | "terminated"
       evaluation_status: "pending" | "passed" | "failed" | "scheduled"
       evaluation_step: "interview" | "yard_test" | "road_test"
@@ -12300,6 +12399,14 @@ export const Constants = {
         "quality_check",
         "completion_certificate",
         "other",
+      ],
+      driver_document_type: [
+        "license",
+        "pdp",
+        "passport",
+        "medical",
+        "retest",
+        "defensive_driving",
       ],
       driver_status: ["active", "inactive", "suspended", "terminated"],
       evaluation_status: ["pending", "passed", "failed", "scheduled"],

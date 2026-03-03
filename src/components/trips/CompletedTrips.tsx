@@ -41,7 +41,7 @@ import {
     User, 
     X,
     CheckCircle2
-} from 'lucide-react'; // Removed unused FileSpreadsheet
+} from 'lucide-react';
 import { useMemo, useState } from 'react';
 import CompletedTripEditModal from './CompletedTripEditModal';
 import TripExportDialog from './TripExportDialog';
@@ -568,6 +568,7 @@ const CompletedTrips = ({ trips, onView, onRefresh, isLoading = false }: Complet
                     ))}
                   </SelectContent>
                 </Select>
+
               </div>
             </div>
 

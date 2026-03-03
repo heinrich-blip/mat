@@ -8,11 +8,12 @@ import
     DialogHeader,
     DialogTitle,
   } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Building, Download, FileSpreadsheet, Truck, User } from 'lucide-react';
+import { Building, Calendar, CalendarRange, Download, FileSpreadsheet, Truck, User } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 
@@ -51,12 +52,23 @@ interface TripExportDialogProps {
   tripType: 'active' | 'completed';
 }
 
+type DatePeriodType = 'all' | '1month' | '3months' | '6months' | '1year' | 'custom';
+
 const TripExportDialog = ({ isOpen, onClose, trips, tripType }: TripExportDialogProps) => {
   const { toast } = useToast();
   const [exportFilter, setExportFilter] = useState<ExportFilterType>('all');
   const [exportFormat, setExportFormat] = useState<ExportFormatType>('standard');
   const [selectedValue, setSelectedValue] = useState<string>('');
   const [isExporting, setIsExporting] = useState(false);
+
+  // Date range state
+  const [datePeriod, setDatePeriod] = useState<DatePeriodType>('all');
+  const [customDateFrom, setCustomDateFrom] = useState(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 3);
+    return d.toISOString().split('T')[0];
+  });
+  const [customDateTo, setCustomDateTo] = useState(() => new Date().toISOString().split('T')[0]);
 
   // Extract unique values for filters
   const filterOptions = useMemo(() => {
@@ -70,22 +82,64 @@ const TripExportDialog = ({ isOpen, onClose, trips, tripType }: TripExportDialog
     };
   }, [trips]);
 
-  // Get trips to export based on filter
+  // Filter trips by date period first
+  const dateFilteredTrips = useMemo(() => {
+    if (datePeriod === 'all') return trips;
+
+    const now = new Date();
+    let fromDate: Date;
+    let toDate = now;
+
+    if (datePeriod === 'custom') {
+      fromDate = new Date(customDateFrom);
+      toDate = new Date(customDateTo);
+      toDate.setHours(23, 59, 59, 999);
+    } else {
+      switch (datePeriod) {
+        case '1month': fromDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate()); break;
+        case '3months': fromDate = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate()); break;
+        case '6months': fromDate = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate()); break;
+        case '1year': fromDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()); break;
+        default: return trips;
+      }
+    }
+
+    return trips.filter(trip => {
+      const dateStr = trip.arrival_date || trip.departure_date || trip.completed_at;
+      if (!dateStr) return false;
+      const tripDate = new Date(dateStr);
+      return tripDate >= fromDate && tripDate <= toDate;
+    });
+  }, [trips, datePeriod, customDateFrom, customDateTo]);
+
+  // Get trips to export based on entity filter (applied on top of date filter)
   const tripsToExport = useMemo(() => {
-    if (exportFilter === 'all') return trips;
+    if (exportFilter === 'all') return dateFilteredTrips;
     if (!selectedValue) return [];
 
     switch (exportFilter) {
       case 'client':
-        return trips.filter(t => t.client_name === selectedValue);
+        return dateFilteredTrips.filter(t => t.client_name === selectedValue);
       case 'driver':
-        return trips.filter(t => t.driver_name === selectedValue);
+        return dateFilteredTrips.filter(t => t.driver_name === selectedValue);
       case 'fleet':
-        return trips.filter(t => t.fleet_number === selectedValue);
+        return dateFilteredTrips.filter(t => t.fleet_number === selectedValue);
       default:
-        return trips;
+        return dateFilteredTrips;
     }
-  }, [trips, exportFilter, selectedValue]);
+  }, [dateFilteredTrips, exportFilter, selectedValue]);
+
+  // Date period label for display
+  const datePeriodLabel = useMemo(() => {
+    switch (datePeriod) {
+      case '1month': return 'Last Month';
+      case '3months': return 'Last 3 Months';
+      case '6months': return 'Last 6 Months';
+      case '1year': return 'Last Year';
+      case 'custom': return `${customDateFrom} → ${customDateTo}`;
+      default: return 'All Time';
+    }
+  }, [datePeriod, customDateFrom, customDateTo]);
 
   const formatCurrency = (amount: number | undefined, currency: string = 'USD') => {
     if (!amount) return '';
@@ -338,7 +392,8 @@ const TripExportDialog = ({ isOpen, onClose, trips, tripType }: TripExportDialog
       default:
         filterLabel = 'All trips';
     }
-    return `${formatLabel} - ${filterLabel}`;
+    const dateLabel = datePeriod !== 'all' ? ` | Period: ${datePeriodLabel}` : '';
+    return `${formatLabel} - ${filterLabel}${dateLabel}`;
   };
 
   const handleFilterTypeChange = (value: ExportFilterType) => {
@@ -490,6 +545,58 @@ const TripExportDialog = ({ isOpen, onClose, trips, tripType }: TripExportDialog
             </div>
           )}
 
+          {/* Date Range Selection */}
+          <div className="space-y-3">
+            <Label className="text-sm font-medium flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+              Date Range
+            </Label>
+            <Select value={datePeriod} onValueChange={(v) => setDatePeriod(v as DatePeriodType)}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select date range" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Time ({trips.length} trips)</SelectItem>
+                <SelectItem value="1month">Last Month</SelectItem>
+                <SelectItem value="3months">Last 3 Months</SelectItem>
+                <SelectItem value="6months">Last 6 Months</SelectItem>
+                <SelectItem value="1year">Last Year</SelectItem>
+                <SelectItem value="custom">
+                  <span className="flex items-center gap-1.5">
+                    <CalendarRange className="h-3.5 w-3.5" />
+                    Custom Range
+                  </span>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+
+            {datePeriod === 'custom' && (
+              <div className="flex items-end gap-2">
+                <div className="flex-1 space-y-1">
+                  <Label className="text-xs text-muted-foreground">From</Label>
+                  <Input
+                    type="date"
+                    value={customDateFrom}
+                    onChange={(e) => setCustomDateFrom(e.target.value)}
+                    max={customDateTo}
+                    className="h-9 text-sm"
+                  />
+                </div>
+                <span className="text-muted-foreground pb-2">→</span>
+                <div className="flex-1 space-y-1">
+                  <Label className="text-xs text-muted-foreground">To</Label>
+                  <Input
+                    type="date"
+                    value={customDateTo}
+                    onChange={(e) => setCustomDateTo(e.target.value)}
+                    min={customDateFrom}
+                    className="h-9 text-sm"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Preview */}
           <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
             <div className="text-sm font-medium text-gray-700 mb-2">Export Preview</div>
@@ -499,6 +606,12 @@ const TripExportDialog = ({ isOpen, onClose, trips, tripType }: TripExportDialog
               </p>
               <p>
                 Format: <span className="font-medium">{exportFormat === 'marketing' ? 'Marketing (Delivery Book)' : 'Standard'}</span>
+              </p>
+              <p>
+                Period: <span className="font-medium">{datePeriodLabel}</span>
+                {datePeriod !== 'all' && (
+                  <span className="text-xs text-muted-foreground ml-1">({dateFilteredTrips.length} in range)</span>
+                )}
               </p>
               {exportFilter !== 'all' && selectedValue && (
                 <p>

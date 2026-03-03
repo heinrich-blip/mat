@@ -10,8 +10,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { CreateDriverAuthDialog } from '@/components/driver/CreateDriverAuthDialog';
+import DriverDocumentsSection from '@/components/driver/DriverDocumentsSection';
 import { useDrivers, type Driver, type DriverInsert } from '@/hooks/useDrivers';
-import { Calendar, Edit, Loader2, Mail, MoreVertical, Phone, Plus, Search, Smartphone, SmartphoneCharging, Trash2, User } from 'lucide-react';
+import { Calendar, Edit, Eye, FileText, Loader2, Mail, MoreVertical, Phone, Plus, Search, Smartphone, SmartphoneCharging, Trash2, User } from 'lucide-react';
 import { useState } from 'react';
 
 const INITIAL_FORM_STATE: Partial<DriverInsert> = {
@@ -59,6 +60,10 @@ const DriverManagementSection = () => {
   // Auth profile state
   const [isAuthDialogOpen, setIsAuthDialogOpen] = useState(false);
   const [selectedDriverForAuth, setSelectedDriverForAuth] = useState<Driver | null>(null);
+
+  // Driver detail/documents state
+  const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
+  const [selectedDriverForDetail, setSelectedDriverForDetail] = useState<Driver | null>(null);
 
   // Generate next driver number
   const generateDriverNumber = (): string => {
@@ -449,6 +454,17 @@ const DriverManagementSection = () => {
                   {editingDriver ? 'Save Changes' : 'Create Driver'}
                 </Button>
               </DialogFooter>
+
+              {/* Show documents section when editing an existing driver */}
+              {editingDriver && (
+                <div className="border-t pt-4 mt-2">
+                  <DriverDocumentsSection
+                    driverId={editingDriver.id}
+                    driverName={getDriverFullName(editingDriver)}
+                    compact
+                  />
+                </div>
+              )}
             </DialogContent>
           </Dialog>
         </div>
@@ -552,6 +568,7 @@ const DriverManagementSection = () => {
                   <TableHead>Contact</TableHead>
                   <TableHead>Hire Date</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead className="text-center">Docs</TableHead>
                   <TableHead className="text-center">Mobile App</TableHead>
                   <TableHead className="w-12"></TableHead>
                 </TableRow>
@@ -608,6 +625,28 @@ const DriverManagementSection = () => {
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => {
+                                setSelectedDriverForDetail(driver);
+                                setIsDetailDialogOpen(true);
+                              }}
+                            >
+                              <FileText className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>View Documents & Certificates</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
                             {/* @ts-expect-error - auth_user_id added via migration */}
                             {(driver as Record<string, unknown>).auth_user_id ? (
                               <div className="inline-flex items-center justify-center h-8 w-8 rounded-full bg-green-100 dark:bg-green-900/30">
@@ -639,6 +678,15 @@ const DriverManagementSection = () => {
                           <DropdownMenuItem onClick={() => handleOpenEdit(driver)}>
                             <Edit className="h-4 w-4 mr-2" />
                             Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setSelectedDriverForDetail(driver);
+                              setIsDetailDialogOpen(true);
+                            }}
+                          >
+                            <Eye className="h-4 w-4 mr-2" />
+                            View Documents
                           </DropdownMenuItem>
                           {/* @ts-expect-error - auth_user_id added via migration */}
                           {!(driver as Record<string, unknown>).auth_user_id && (
@@ -704,6 +752,49 @@ const DriverManagementSection = () => {
             refetch();
           }}
         />
+
+        {/* Driver Documents Detail Dialog */}
+        <Dialog open={isDetailDialogOpen} onOpenChange={setIsDetailDialogOpen}>
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                {selectedDriverForDetail ? getDriverFullName(selectedDriverForDetail) : ''} — Documents
+              </DialogTitle>
+              <DialogDescription>
+                Manage document uploads and expiry dates for licenses, PDP, passport, medicals, retest, and defensive driving.
+              </DialogDescription>
+            </DialogHeader>
+
+            {selectedDriverForDetail && (
+              <div className="py-2">
+                {/* Driver summary */}
+                <div className="flex items-center gap-4 mb-4 p-3 bg-muted/50 rounded-lg">
+                  <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+                    <User className="h-6 w-6 text-primary" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium">{getDriverFullName(selectedDriverForDetail)}</p>
+                    <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                      <span>{selectedDriverForDetail.driver_number}</span>
+                      <span>•</span>
+                      <span>License: {selectedDriverForDetail.license_number}</span>
+                      {selectedDriverForDetail.phone && (
+                        <><span>•</span><span>{selectedDriverForDetail.phone}</span></>
+                      )}
+                    </div>
+                  </div>
+                  {getStatusBadge(selectedDriverForDetail.status)}
+                </div>
+
+                <DriverDocumentsSection
+                  driverId={selectedDriverForDetail.id}
+                  driverName={getDriverFullName(selectedDriverForDetail)}
+                />
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );

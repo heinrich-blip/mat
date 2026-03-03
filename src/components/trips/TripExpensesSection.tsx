@@ -71,6 +71,7 @@ import
     Flag,
     RotateCcw,
     Search,
+    ShieldCheck,
     Trash2,
     Truck
   } from 'lucide-react';
@@ -117,6 +118,8 @@ const TripExpensesSection = ({ trips, onViewTrip }: TripExpensesSectionProps) =>
   const [isVerifying, setIsVerifying] = useState(false);
   const [selectedTripsForVerify, setSelectedTripsForVerify] = useState<Set<string>>(new Set());
   const [isBulkVerifying, setIsBulkVerifying] = useState(false);
+  const [costToApprove, setCostToApprove] = useState<CostEntry | null>(null);
+  const [isApproving, setIsApproving] = useState(false);
 
   // Fetch wialon vehicles for fleet mapping
   const { data: wialonVehicles = [] } = useWialonVehicles();
@@ -220,11 +223,12 @@ const TripExpensesSection = ({ trips, onViewTrip }: TripExpensesSectionProps) =>
         if (!matchesSearch) return false;
       }
 
-      // Status filter - now includes missing slips as needing attention
+      // Status filter - now includes missing slips and unverified costs as needing attention
       if (filterStatus !== 'all') {
         const hasUnresolvedFlag = expense.is_flagged && expense.investigation_status !== 'resolved';
         const isMissingSlip = !expense.attachments || expense.attachments.length === 0;
-        const needsAttention = hasUnresolvedFlag || isMissingSlip;
+        const isUnverified = expense.investigation_status !== 'resolved';
+        const needsAttention = hasUnresolvedFlag || isMissingSlip || isUnverified;
         
         if (filterStatus === 'needs-attention' && !needsAttention) {
           return false;
@@ -238,7 +242,7 @@ const TripExpensesSection = ({ trips, onViewTrip }: TripExpensesSectionProps) =>
         if (filterStatus === 'resolved' && expense.investigation_status !== 'resolved') {
           return false;
         }
-        if (filterStatus === 'verified' && (expense.is_flagged || isMissingSlip)) {
+        if (filterStatus === 'verified' && expense.investigation_status !== 'resolved') {
           return false;
         }
       }
@@ -845,8 +849,56 @@ const TripExpensesSection = ({ trips, onViewTrip }: TripExpensesSectionProps) =>
     setShowFlagModal(true);
   };
 
+  const handleApproveCost = async () => {
+    if (!costToApprove) return;
+
+    setIsApproving(true);
+    try {
+      const { error } = await supabase
+        .from('cost_entries')
+        .update({
+          investigation_status: 'resolved',
+          investigation_notes: costToApprove.investigation_notes
+            ? `${costToApprove.investigation_notes}\n\n--- APPROVED ---\nApproved by ${user?.email || 'admin'} on ${new Date().toLocaleDateString('en-ZA')}`
+            : `Approved by ${user?.email || 'admin'} on ${new Date().toLocaleDateString('en-ZA')}`,
+          resolved_at: new Date().toISOString(),
+          resolved_by: user?.email || 'admin',
+        })
+        .eq('id', costToApprove.id);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Cost Approved',
+        description: `${costToApprove.category}${costToApprove.sub_category ? ' – ' + costToApprove.sub_category : ''} has been approved.`,
+      });
+
+      setCostToApprove(null);
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ['cost-entries'] });
+    } catch (err) {
+      console.error('Error approving cost:', err);
+      toast({
+        title: 'Error',
+        description: 'Failed to approve cost entry.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsApproving(false);
+    }
+  };
+
   const getStatusBadge = (expense: ExpenseWithTrip) => {
-    if (!expense.is_flagged) {
+    if (expense.is_flagged && expense.investigation_status !== 'resolved') {
+      return (
+        <Badge variant="destructive">
+          <AlertTriangle className="w-3 h-3 mr-1" />
+          Flagged
+        </Badge>
+      );
+    }
+
+    if (expense.investigation_status === 'resolved') {
       return (
         <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 border-emerald-300/50">
           <CheckCircle className="w-3 h-3 mr-1" />
@@ -855,19 +907,11 @@ const TripExpensesSection = ({ trips, onViewTrip }: TripExpensesSectionProps) =>
       );
     }
 
-    if (expense.investigation_status === 'resolved') {
-      return (
-        <Badge variant="outline" className="bg-blue-500/10 text-blue-700 border-blue-300/50">
-          <CheckCircle className="w-3 h-3 mr-1" />
-          Resolved
-        </Badge>
-      );
-    }
-
+    // Unflagged but not yet explicitly approved
     return (
-      <Badge variant="destructive">
+      <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-300/50">
         <AlertTriangle className="w-3 h-3 mr-1" />
-        Flagged
+        Pending Verification
       </Badge>
     );
   };
@@ -1358,6 +1402,17 @@ const TripExpensesSection = ({ trips, onViewTrip }: TripExpensesSectionProps) =>
                                 </TableCell>
                                 <TableCell className="py-2 text-right">
                                   <div className="flex items-center justify-end gap-0.5">
+                                    {!expense.is_flagged && expense.investigation_status !== 'resolved' && (
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-7 w-7 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                                        onClick={() => setCostToApprove(expense)}
+                                        title="Verify Cost"
+                                      >
+                                        <ShieldCheck className="w-3.5 h-3.5" />
+                                      </Button>
+                                    )}
                                     {hasUnresolvedFlag && (
                                       <Button
                                         size="icon"
@@ -1464,6 +1519,52 @@ const TripExpensesSection = ({ trips, onViewTrip }: TripExpensesSectionProps) =>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Approve Cost Confirmation Dialog */}
+      <AlertDialog open={!!costToApprove} onOpenChange={() => setCostToApprove(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-emerald-600" />
+              Approve Cost
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>Are you sure you want to approve this cost entry?</p>
+                {costToApprove && (
+                  <div className="rounded-lg border bg-muted/50 p-3 space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Category</span>
+                      <span className="font-medium">{costToApprove.category}{costToApprove.sub_category ? ` – ${costToApprove.sub_category}` : ''}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Amount</span>
+                      <span className="font-medium">{formatCurrency(costToApprove.amount, costToApprove.currency || 'USD')}</span>
+                    </div>
+                    {costToApprove.flag_reason && (
+                      <div className="pt-2 border-t">
+                        <span className="text-muted-foreground">Flag Reason</span>
+                        <p className="mt-1 text-amber-700 font-medium">{costToApprove.flag_reason}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">This will mark the cost as verified and approved.</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isApproving}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleApproveCost}
+              disabled={isApproving}
+              className="bg-emerald-600 text-white hover:bg-emerald-700"
+            >
+              {isApproving ? 'Approving...' : 'Approve Cost'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
