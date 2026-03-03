@@ -7,11 +7,18 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies
 node_modules
+
+# Build outputs
 dist
 dist-ssr
-dev-dist/          # <-- Add this line
+dev-dist/
+
+# Local environment files
 *.local
+**/.env
+.env.example
 
 # Editor directories and files
 .vscode/*
@@ -23,10 +30,9 @@ dev-dist/          # <-- Add this line
 *.njsproj
 *.sln
 *.sw?
+
+# Deployment
 .vercel
 
-.vercel
-**/.env
-.env.exampledev-dist/
-
-.vercel
+# Archive folders (add this if you want to ignore docs/archive)
+docs/archive/
