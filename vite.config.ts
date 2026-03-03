@@ -1,8 +1,13 @@
 import react from "@vitejs/plugin-react-swc";
 import { componentTagger } from "lovable-tagger";
 import path from "path";
+import { fileURLToPath } from 'url';
 import { defineConfig } from "vite";
 import { VitePWA } from 'vite-plugin-pwa';
+
+// Fix for __dirname in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
