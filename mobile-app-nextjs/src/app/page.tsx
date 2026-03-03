@@ -1,9 +1,11 @@
 "use client";
 
 import { MobileShell } from "@/components/layout";
+import { DocumentExpiryBanner } from "@/components/document-expiry-banner";
 import { PullToRefresh } from "@/components/ui/pull-to-refresh";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/contexts/auth-context";
+import { useDriverDocuments } from "@/hooks/use-driver-documents";
 import
   {
     useDieselRealtimeSync,
@@ -103,6 +105,29 @@ export default function HomePage() {
 
   const driverName = getDriverName();
 
+  // Find driver by email for document expiry notifications
+  const { data: driverRecord } = useQuery<{ id: string } | null>({
+    queryKey: ["driver-for-docs", user?.email],
+    queryFn: async () => {
+      if (!user?.email) return null;
+      const { data, error } = await supabase
+        .from("drivers")
+        .select("id")
+        .eq("email", user.email)
+        .eq("status", "active")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) return null;
+      return data;
+    },
+    enabled: !!user?.email,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  // Document expiry alerts
+  const { alerts, expiredCount, expiringCount, hasAlerts } = useDriverDocuments(driverRecord?.id);
+
   // Real-time subscriptions for dashboard data
   useDieselRealtimeSync(user?.id);
   useFreightRealtimeSync(user?.id);
@@ -116,6 +141,7 @@ export default function HomePage() {
       queryClient.invalidateQueries({ queryKey: ["monthly-trips"] }),
       queryClient.invalidateQueries({ queryKey: ["recent-diesel-records"] }),
       queryClient.invalidateQueries({ queryKey: ["recent-trips"] }),
+      queryClient.invalidateQueries({ queryKey: ["driver-documents"] }),
     ]);
   };
 
@@ -368,6 +394,15 @@ export default function HomePage() {
               </p>
             </div>
           </div>
+        )}
+
+        {/* Document Expiry Notifications */}
+        {hasAlerts && (
+          <DocumentExpiryBanner
+            alerts={alerts}
+            expiredCount={expiredCount}
+            expiringCount={expiringCount}
+          />
         )}
 
         {/* Monthly Stats Header */}

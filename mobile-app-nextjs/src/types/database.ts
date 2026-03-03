@@ -24,6 +24,9 @@ export interface UserProfile {
 // Keep Profile as an alias for backward compatibility
 export type Profile = UserProfile;
 
+// Driver document types
+export type DriverDocumentType = 'license' | 'pdp' | 'passport' | 'medical' | 'retest' | 'defensive_driving';
+
 export interface Database {
   public: {
     Tables: {
@@ -320,6 +323,56 @@ export interface Database {
           updated_at?: string | null;
         };
       };
+      driver_documents: {
+        Row: {
+          id: string;
+          driver_id: string;
+          document_type: DriverDocumentType;
+          document_number: string | null;
+          expiry_date: string | null;
+          file_url: string | null;
+          file_path: string | null;
+          file_name: string | null;
+          file_size: number | null;
+          mime_type: string | null;
+          uploaded_by: string | null;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          driver_id: string;
+          document_type: DriverDocumentType;
+          document_number?: string | null;
+          expiry_date?: string | null;
+          file_url?: string | null;
+          file_path?: string | null;
+          file_name?: string | null;
+          file_size?: number | null;
+          mime_type?: string | null;
+          uploaded_by?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          driver_id?: string;
+          document_type?: DriverDocumentType;
+          document_number?: string | null;
+          expiry_date?: string | null;
+          file_url?: string | null;
+          file_path?: string | null;
+          file_name?: string | null;
+          file_size?: number | null;
+          mime_type?: string | null;
+          uploaded_by?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
     };
     Views: {
       [_ in never]: never;
@@ -328,7 +381,7 @@ export interface Database {
       [_ in never]: never;
     };
     Enums: {
-      [_ in never]: never;
+      driver_document_type: DriverDocumentType;
     };
     CompositeTypes: {
       [_ in never]: never;
@@ -349,4 +402,5 @@ export type Vehicle = Tables<"vehicles">;
 export type DieselEntry = Tables<"diesel_entries">;
 export type FreightEntry = Tables<"freight_entries">;
 export type CostEntry = Tables<"cost_entries">;
+export type DriverDocument = Tables<"driver_documents">;
 export type Trip = Tables<"trips">;

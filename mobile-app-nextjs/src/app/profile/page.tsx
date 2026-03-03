@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { VehicleSelect } from "@/components/ui/vehicle-select";
 import { useAuth } from "@/contexts/auth-context";
+import { useDriverDocuments } from "@/hooks/use-driver-documents";
 import { useToast } from "@/hooks/use-toast";
 import { createClient } from "@/lib/supabase/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -29,6 +30,7 @@ import
     User
   } from "lucide-react";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 
 interface Vehicle {
@@ -88,6 +90,7 @@ export default function ProfilePage() {
   const { toast } = useToast();
   const supabase = createClient();
   const queryClient = useQueryClient();
+  const router = useRouter();
   const [isSigningOut, setIsSigningOut] = useState(false);
 
   // Find driver by matching email - handles multiple rows gracefully
@@ -404,29 +407,34 @@ export default function ProfilePage() {
     }
   };
 
+  // Document expiry notifications
+  const { alerts: _alerts, expiredCount, expiringCount, hasAlerts } = useDriverDocuments(driver?.id);
+
   const menuItems = [
     {
       icon: Bell,
       label: "Notifications",
-      description: "Manage alerts",
-      onClick: () => toast({
-        title: "Notifications",
-        description: "Notifications are coming soon",
-      }),
+      description: hasAlerts
+        ? `${expiredCount + expiringCount} document alert${expiredCount + expiringCount > 1 ? "s" : ""}`
+        : "No alerts",
+      badge: hasAlerts ? (expiredCount > 0 ? "destructive" : "warning") : undefined,
+      badgeCount: expiredCount + expiringCount,
+      onClick: () => router.push("/profile/documents"),
     },
     {
       icon: FileText,
       label: "Documents",
-      description: "View files",
-      onClick: () => toast({
-        title: "Documents",
-        description: "Document management is coming soon",
-      }),
+      description: "License, PDP & more",
+      badge: hasAlerts ? (expiredCount > 0 ? "destructive" : "warning") : undefined,
+      badgeCount: expiredCount + expiringCount,
+      onClick: () => router.push("/profile/documents"),
     },
     {
       icon: HelpCircle,
       label: "Support",
       description: "Get help",
+      badge: undefined as string | undefined,
+      badgeCount: 0,
       onClick: () => toast({
         title: "Support",
         description: "Contact administrator for assistance",
@@ -436,6 +444,8 @@ export default function ProfilePage() {
       icon: Smartphone,
       label: "About",
       description: "v2.1.0",
+      badge: undefined as string | undefined,
+      badgeCount: 0,
       onClick: () => toast({
         title: "Matanuska Fleet",
         description: "Version 2.1.0",
@@ -652,8 +662,17 @@ export default function ProfilePage() {
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-muted rounded-lg">
+                    <div className="relative p-2 bg-muted rounded-lg">
                       <Icon className="w-4 h-4 text-muted-foreground" strokeWidth={1.5} />
+                      {item.badge && item.badgeCount > 0 && (
+                        <span
+                          className={`absolute -top-1 -right-1 flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold text-white ${
+                            item.badge === "destructive" ? "bg-destructive" : "bg-amber-500"
+                          }`}
+                        >
+                          {item.badgeCount}
+                        </span>
+                      )}
                     </div>
                     <div className="text-left">
                       <p className="text-sm font-medium">{item.label}</p>
