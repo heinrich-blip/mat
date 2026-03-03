@@ -74,6 +74,7 @@ interface CostEntry {
   notes: string | null;
   is_flagged: boolean;
   flag_reason: string | null;
+  is_system_generated: boolean;
   created_at: string | null;
 }
 
@@ -212,16 +213,36 @@ export function TripDetailSheet({ trip, open, onOpenChange }: TripDetailSheetPro
 
   // ─── Queries ───────────────────────────────────────────────────────
 
-  // Fetch cost entries for this trip
+  // Fetch cost entries for this trip (manual entries only — system-generated are shown separately)
   const { data: tripExpenses = [], isLoading: loadingExpenses } = useQuery<CostEntry[]>({
     queryKey: ["trip-expenses", trip.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("cost_entries")
         .select(
-          "id, trip_id, category, sub_category, amount, currency, reference_number, date, notes, is_flagged, flag_reason, created_at"
+          "id, trip_id, category, sub_category, amount, currency, reference_number, date, notes, is_flagged, flag_reason, is_system_generated, created_at"
         )
         .eq("trip_id", trip.id)
+        .eq("is_system_generated", false)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      return (data || []) as CostEntry[];
+    },
+    enabled: open && !!trip.id,
+  });
+
+  // Fetch system-generated (pre-configured) cost entries for this trip
+  const { data: systemExpenses = [] } = useQuery<CostEntry[]>({
+    queryKey: ["trip-system-expenses", trip.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("cost_entries")
+        .select(
+          "id, trip_id, category, sub_category, amount, currency, reference_number, date, notes, is_flagged, flag_reason, is_system_generated, created_at"
+        )
+        .eq("trip_id", trip.id)
+        .eq("is_system_generated", true)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -282,6 +303,11 @@ export function TripDetailSheet({ trip, open, onOpenChange }: TripDetailSheetPro
   const totalExpensesUsd = useMemo(
     () => tripExpenses.reduce((s: number, e: CostEntry) => s + (e.currency === "USD" ? e.amount : 0), 0),
     [tripExpenses]
+  );
+
+  const totalSystemExpensesUsd = useMemo(
+    () => systemExpenses.reduce((s: number, e: CostEntry) => s + (e.currency === "USD" ? e.amount : 0), 0),
+    [systemExpenses]
   );
 
   // ─── Trip Info Save ────────────────────────────────────────────────
@@ -581,9 +607,9 @@ export function TripDetailSheet({ trip, open, onOpenChange }: TripDetailSheetPro
                 Trip Expenses
               </p>
               <div className="flex items-center gap-2">
-                {tripExpenses.length > 0 && (
+                {(tripExpenses.length > 0 || systemExpenses.length > 0) && (
                   <span className="text-xs text-muted-foreground tabular-nums">
-                    ${totalExpensesUsd.toFixed(2)}
+                    ${(totalExpensesUsd + totalSystemExpensesUsd).toFixed(2)}
                   </span>
                 )}
                 {!showExpenseForm && (
@@ -600,7 +626,21 @@ export function TripDetailSheet({ trip, open, onOpenChange }: TripDetailSheetPro
               </div>
             </div>
 
-            {/* Existing Expenses List */}
+            {/* Pre-configured (system-generated) expenses */}
+            {systemExpenses.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">
+                  Pre-configured Route Costs
+                </p>
+                <div className="space-y-1.5 opacity-70">
+                  {systemExpenses.map((entry: CostEntry) => (
+                    <ExpenseRow key={entry.id} entry={entry} isSystem />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Driver-added expenses */}
             {loadingExpenses ? (
               <div className="flex justify-center py-6">
                 <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
@@ -608,23 +648,34 @@ export function TripDetailSheet({ trip, open, onOpenChange }: TripDetailSheetPro
             ) : tripExpenses.length === 0 && !showExpenseForm ? (
               <div className="card-glass p-6 text-center">
                 <Receipt className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">No expenses for this trip</p>
+                <p className="text-sm text-muted-foreground">
+                  {systemExpenses.length > 0
+                    ? "No additional expenses added. Pre-configured costs are shown above."
+                    : "No expenses for this trip"}
+                </p>
                 <Button
                   size="sm"
                   className="mt-3 h-9 text-xs gap-1"
                   onClick={() => setShowExpenseForm(true)}
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  Add First Expense
+                  Add {systemExpenses.length > 0 ? "Expense" : "First Expense"}
                 </Button>
               </div>
-            ) : (
-              <div className="space-y-2">
-                {tripExpenses.map((entry: CostEntry) => (
-                  <ExpenseRow key={entry.id} entry={entry} attachmentCount={attachmentCounts[entry.id] || 0} />
-                ))}
+            ) : tripExpenses.length > 0 ? (
+              <div className="space-y-1.5">
+                {systemExpenses.length > 0 && (
+                  <p className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">
+                    Your Expenses
+                  </p>
+                )}
+                <div className="space-y-2">
+                  {tripExpenses.map((entry: CostEntry) => (
+                    <ExpenseRow key={entry.id} entry={entry} attachmentCount={attachmentCounts[entry.id] || 0} />
+                  ))}
+                </div>
               </div>
-            )}
+            ) : null}
 
             {/* ─── Add Expense Form ──────────────────────── */}
             {showExpenseForm && (
@@ -914,17 +965,22 @@ export function TripDetailSheet({ trip, open, onOpenChange }: TripDetailSheetPro
 
 // ─── Expense Row Sub-component ───────────────────────────────────────
 
-function ExpenseRow({ entry, attachmentCount = 0 }: { entry: CostEntry; attachmentCount?: number }) {
+function ExpenseRow({ entry, attachmentCount = 0, isSystem = false }: { entry: CostEntry; attachmentCount?: number; isSystem?: boolean }) {
   return (
-    <div className="card-glass p-3 space-y-1.5">
+    <div className={cn("card-glass p-3 space-y-1.5", isSystem && "border border-dashed border-muted-foreground/20")}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
           <Badge
-            variant={entry.is_flagged ? "destructive" : "secondary"}
+            variant={isSystem ? "outline" : entry.is_flagged ? "destructive" : "secondary"}
             className="text-[10px] shrink-0"
           >
             {entry.category}
           </Badge>
+          {isSystem && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium">
+              Auto
+            </span>
+          )}
           {entry.is_flagged && (
             <Flag className="w-3 h-3 text-amber-500 shrink-0" />
           )}

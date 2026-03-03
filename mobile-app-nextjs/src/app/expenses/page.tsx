@@ -280,13 +280,44 @@ export default function ExpensesPage(): JSX.Element {
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Queries - Using user.id instead of profile.id since profile might not have id
-  const { data: trips = [], isLoading: tripsLoading } = useQuery<Trip[]>({
-    queryKey: ["driver-trips", user?.id],
+  // Fetch driver's assigned vehicle first
+  const { data: assignedVehicle } = useQuery({
+    queryKey: ["assigned-vehicle", user?.id],
     queryFn: async () => {
+      if (!user?.id) return null;
+
+      const { data, error } = await supabase
+        .from("driver_vehicle_assignments")
+        .select("id, vehicle_id, vehicles (id, fleet_number, registration_number)")
+        .eq("driver_id", user.id)
+        .eq("is_active", true)
+        .order("assigned_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error && error.code !== "PGRST116") throw error;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const assignment = data as any;
+      if (assignment?.vehicles) {
+        const v = Array.isArray(assignment.vehicles) ? assignment.vehicles[0] : assignment.vehicles;
+        return v as { id: string; fleet_number: string; registration_number: string };
+      }
+      return null;
+    },
+    enabled: !!user?.id,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  // Queries - Fetch only trips for this driver's assigned vehicle
+  const { data: trips = [], isLoading: tripsLoading } = useQuery<Trip[]>({
+    queryKey: ["driver-trips", user?.id, assignedVehicle?.id],
+    queryFn: async () => {
+      if (!assignedVehicle?.id) return [];
+
       const { data, error } = await supabase
         .from("trips")
         .select("id, trip_number, origin, destination, status")
+        .eq("fleet_vehicle_id", assignedVehicle.id)
         .in("status", ["active", "in_progress", "pending"])
         .order("created_at", { ascending: false })
         .limit(50);
@@ -297,7 +328,25 @@ export default function ExpensesPage(): JSX.Element {
       }
       return (data || []) as Trip[];
     },
-    enabled: !!user?.id,
+    enabled: !!user?.id && !!assignedVehicle?.id,
+  });
+
+  // Fetch all trip IDs for this vehicle (including completed) for filtering expenses
+  const { data: vehicleTripIds = [] } = useQuery<string[]>({
+    queryKey: ["vehicle-trip-ids", assignedVehicle?.id],
+    queryFn: async () => {
+      if (!assignedVehicle?.id) return [];
+
+      const { data, error } = await supabase
+        .from("trips")
+        .select("id")
+        .eq("fleet_vehicle_id", assignedVehicle.id);
+
+      if (error) return [];
+      return (data || []).map((t: { id: string }) => t.id);
+    },
+    enabled: !!assignedVehicle?.id,
+    staleTime: 5 * 60 * 1000,
   });
 
   const {
@@ -305,15 +354,18 @@ export default function ExpensesPage(): JSX.Element {
     isLoading: entriesLoading,
     error: entriesError
   } = useQuery<CostEntry[]>({
-    queryKey: ["expense-entries"],
+    queryKey: ["expense-entries", vehicleTripIds],
     queryFn: async () => {
-      // Fetch cost entries without embedded trips join (no FK relationship in DB)
+      if (vehicleTripIds.length === 0) return [];
+
+      // Only fetch cost entries for this driver's vehicle's trips
       const { data, error } = await supabase
         .from("cost_entries")
         .select(
           "id, trip_id, category, sub_category, amount, currency, reference_number, date, notes, is_flagged, flag_reason, created_at"
         )
         .eq("is_system_generated", false)
+        .in("trip_id", vehicleTripIds)
         .order("created_at", { ascending: false })
         .limit(50);
 
@@ -442,6 +494,10 @@ export default function ExpensesPage(): JSX.Element {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["expense-entries"] });
       queryClient.invalidateQueries({ queryKey: ["cost-entries"] });
+      // Also invalidate trip-expenses so the trip detail sheet stays in sync
+      if (formData.trip_id) {
+        queryClient.invalidateQueries({ queryKey: ["trip-expenses", formData.trip_id] });
+      }
 
       setShowSuccess(true);
       setTimeout(() => {

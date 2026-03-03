@@ -17,7 +17,9 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useOperations } from '@/contexts/OperationsContext';
 import { useReeferConsumptionSummary, useReeferDieselRecords, type ReeferDieselRecordRow } from '@/hooks/useReeferDiesel';
@@ -34,7 +36,7 @@ import {
 } from '@/lib/dieselFleetExport';
 import { formatCurrency, formatDate, formatNumber } from '@/lib/formatters';
 import type { DieselConsumptionRecord, DieselNorms } from '@/types/operations';
-import { AlertCircle, BarChart3, CheckCircle, ChevronDown, ChevronRight, Download, Edit, Eye, FileSpreadsheet, FileText, Filter, Fuel, Link, MessageCircle, Plus, Settings, Snowflake, Trash2, Truck, Upload, User } from 'lucide-react';
+import { AlertCircle, BarChart3, Calendar, CalendarRange, CheckCircle, ChevronDown, ChevronRight, Download, Edit, Eye, FileSpreadsheet, FileText, Filter, Fuel, Link, MessageCircle, Plus, Settings, Snowflake, Trash2, Truck, Upload, User } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 // Report data types
@@ -165,6 +167,13 @@ const DieselManagement = () => {
   const [fleetFilter, _setFleetFilter] = useState<string>('');
   const [weekFilter, _setWeekFilter] = useState<string>('');
   const [reportType, setReportType] = useState<'driver' | 'fleet' | 'station' | 'weekly' | 'reefer'>('fleet');
+
+  // Report date range state
+  const [reportPeriod, setReportPeriod] = useState<string>('3months');
+  const todayStr = new Date().toISOString().split('T')[0];
+  const thirtyDaysAgoStr = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+  const [reportDateFrom, setReportDateFrom] = useState(thirtyDaysAgoStr);
+  const [reportDateTo, setReportDateTo] = useState(todayStr);
   const {
     dieselRecords,
     trips,
@@ -239,6 +248,40 @@ const DieselManagement = () => {
     const fleets = new Set(reeferRecords.map(r => r.fleet_number).filter(Boolean));
     return Array.from(fleets).sort();
   }, [reeferRecords]);
+
+  // Filter records by report period for the reports tab
+  const filterByPeriod = useCallback((records: DieselConsumptionRecord[]) => {
+    if (reportPeriod === 'all') return records;
+
+    let fromDate: string;
+
+    if (reportPeriod === 'custom') {
+      return records.filter(r => r.date >= reportDateFrom && r.date <= reportDateTo);
+    }
+
+    const now = new Date();
+    switch (reportPeriod) {
+      case '1month':
+        fromDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate()).toISOString().split('T')[0];
+        break;
+      case '3months':
+        fromDate = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate()).toISOString().split('T')[0];
+        break;
+      case '6months':
+        fromDate = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate()).toISOString().split('T')[0];
+        break;
+      case '1year':
+        fromDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()).toISOString().split('T')[0];
+        break;
+      default:
+        return records;
+    }
+
+    return records.filter(r => r.date >= fromDate && r.date <= todayStr);
+  }, [reportPeriod, reportDateFrom, reportDateTo, todayStr]);
+
+  const filteredTruckRecords = useMemo(() => filterByPeriod(truckRecords), [truckRecords, filterByPeriod]);
+  const filteredReeferRecords = useMemo(() => filterByPeriod(reeferRecords), [reeferRecords, filterByPeriod]);
 
   // Modal states
   const [isManualEntryOpen, setIsManualEntryOpen] = useState(false);
@@ -582,7 +625,7 @@ const DieselManagement = () => {
   const driverReports = useMemo((): DriverReport[] => {
     const driverMap = new Map<string, DriverReport>();
 
-    truckRecords.forEach(record => {
+    filteredTruckRecords.forEach(record => {
       const driver = record.driver_name || 'Unknown Driver';
       const existing = driverMap.get(driver);
 
@@ -613,12 +656,12 @@ const DieselManagement = () => {
     });
 
     return Array.from(driverMap.values()).sort((a, b) => b.totalLitres - a.totalLitres);
-  }, [truckRecords]);
+  }, [filteredTruckRecords]);
 
   const reeferDriverReports = useMemo((): ReeferDriverReport[] => {
     const driverMap = new Map<string, ReeferDriverReport>();
 
-    reeferRecords.forEach(record => {
+    filteredReeferRecords.forEach(record => {
       const driver = record.driver_name || 'Unknown Driver';
       const existing = driverMap.get(driver);
       const fleet = record.fleet_number;
@@ -650,7 +693,7 @@ const DieselManagement = () => {
       let totalHrs = 0;
       let totalLitresWithHours = 0;
       report.fleets.forEach(fleet => {
-        const fleetRecs = reeferRecords.filter(r => r.fleet_number === fleet);
+        const fleetRecs = filteredReeferRecords.filter(r => r.fleet_number === fleet);
         fleetRecs.forEach(r => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const hrs = (r as any).hours_operated as number | null;
@@ -682,13 +725,13 @@ const DieselManagement = () => {
     });
 
     return Array.from(driverMap.values()).sort((a, b) => b.totalLitres - a.totalLitres);
-  }, [reeferRecords, reeferLhrMap]);
+  }, [filteredReeferRecords, reeferLhrMap]);
 
   // Generate reports by fleet
   const fleetReports = useMemo((): FleetReport[] => {
     const fleetMap = new Map<string, FleetReport>();
 
-    truckRecords.forEach(record => {
+    filteredTruckRecords.forEach(record => {
       const fleet = record.fleet_number;
       const existing = fleetMap.get(fleet);
       const driver = record.driver_name || 'Unknown';
@@ -720,12 +763,12 @@ const DieselManagement = () => {
     });
 
     return Array.from(fleetMap.values()).sort((a, b) => b.totalLitres - a.totalLitres);
-  }, [truckRecords]);
+  }, [filteredTruckRecords]);
 
   const reeferFleetReports = useMemo((): ReeferFleetReport[] => {
     const fleetMap = new Map<string, ReeferFleetReport>();
 
-    reeferRecords.forEach(record => {
+    filteredReeferRecords.forEach(record => {
       const fleet = record.fleet_number;
       const existing = fleetMap.get(fleet);
       const driver = record.driver_name || 'Unknown';
@@ -753,7 +796,7 @@ const DieselManagement = () => {
     // Enrich with L/hr data: prefer per-record data, fall back to reefer consumption summary
     fleetMap.forEach((report) => {
       // Calculate from per-record hours_operated and litres
-      const fleetRecs = reeferRecords.filter(r => r.fleet_number === report.fleet);
+      const fleetRecs = filteredReeferRecords.filter(r => r.fleet_number === report.fleet);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const recsWithHours = fleetRecs.filter(r => (r as any).hours_operated != null && (r as any).hours_operated > 0);
       if (recsWithHours.length > 0) {
@@ -773,13 +816,13 @@ const DieselManagement = () => {
     });
 
     return Array.from(fleetMap.values()).sort((a, b) => b.totalLitres - a.totalLitres);
-  }, [reeferRecords, reeferLhrMap]);
+  }, [filteredReeferRecords, reeferLhrMap]);
 
   // Generate reports by filling station
   const stationReports = useMemo((): StationReport[] => {
     const stationMap = new Map<string, StationReport>();
 
-    truckRecords.forEach(record => {
+    filteredTruckRecords.forEach(record => {
       const station = record.fuel_station || 'Unknown Station';
       const existing = stationMap.get(station);
       const fleet = record.fleet_number;
@@ -810,12 +853,12 @@ const DieselManagement = () => {
     });
 
     return Array.from(stationMap.values()).sort((a, b) => b.totalLitres - a.totalLitres);
-  }, [truckRecords]);
+  }, [filteredTruckRecords]);
 
   const reeferStationReports = useMemo((): StationReport[] => {
     const stationMap = new Map<string, StationReport>();
 
-    reeferRecords.forEach(record => {
+    filteredReeferRecords.forEach(record => {
       const station = record.fuel_station || 'Unknown Station';
       const existing = stationMap.get(station);
       const fleet = record.fleet_number;
@@ -845,7 +888,7 @@ const DieselManagement = () => {
     });
 
     return Array.from(stationMap.values()).sort((a, b) => b.totalLitres - a.totalLitres);
-  }, [reeferRecords]);
+  }, [filteredReeferRecords]);
 
   // Generate weekly consumption report by fleet categories
   const weeklyReports = useMemo((): WeeklyReport[] => {
@@ -880,6 +923,24 @@ const DieselManagement = () => {
     // Add truck records (non-reefer from dieselRecords)
     dieselRecords.filter(r => !isReeferFleet(r.fleet_number)).forEach(record => {
       const recordDate = new Date(record.date);
+      // Apply report period filter
+      const dateStr = record.date;
+      if (reportPeriod !== 'all') {
+        if (reportPeriod === 'custom') {
+          if (dateStr < reportDateFrom || dateStr > reportDateTo) return;
+        } else {
+          const now = new Date();
+          let fromDate: string;
+          switch (reportPeriod) {
+            case '1month': fromDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate()).toISOString().split('T')[0]; break;
+            case '3months': fromDate = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate()).toISOString().split('T')[0]; break;
+            case '6months': fromDate = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate()).toISOString().split('T')[0]; break;
+            case '1year': fromDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()).toISOString().split('T')[0]; break;
+            default: fromDate = '1900-01-01';
+          }
+          if (dateStr < fromDate) return;
+        }
+      }
       const weekStart = getWeekStart(recordDate);
       const weekEnd = new Date(weekStart);
       weekEnd.setDate(weekEnd.getDate() + 6);
@@ -892,7 +953,7 @@ const DieselManagement = () => {
     });
 
     // Add reefer records (from merged reeferRecords which includes both legacy + new)
-    reeferRecords.forEach(record => {
+    filteredReeferRecords.forEach(record => {
       const recordDate = new Date(record.date);
       const weekStart = getWeekStart(recordDate);
       const weekEnd = new Date(weekStart);
@@ -1010,14 +1071,14 @@ const DieselManagement = () => {
     }
 
     return reports;
-  }, [dieselRecords, reeferRecords, reeferFleetNumbers]);
+  }, [dieselRecords, filteredReeferRecords, reeferFleetNumbers, reportPeriod, reportDateFrom, reportDateTo]);
 
   // ── Weekly breakdowns for each individual report type (Mon–Sun grouping) ──
 
   /** One entry per ISO week, containing FleetReport rows for that week's truck records. */
   const weeklyFleetBreakdown = useMemo(() => {
     const weekMap = new Map<string, { ws: Date; we: Date; recs: typeof truckRecords }>();
-    truckRecords.forEach(r => {
+    filteredTruckRecords.forEach(r => {
       const ws = _wkStart(new Date(r.date));
       const we = new Date(ws); we.setDate(we.getDate() + 6);
       const k = ws.toISOString().split('T')[0];
@@ -1044,12 +1105,12 @@ const DieselManagement = () => {
       const data = Array.from(fm.values()).sort((a, b) => b.totalLitres - a.totalLitres);
       return { weekKey, weekNumber: _wkNumber(ws), weekLabel: _wkLabel(ws, we), weekStart: ws.toISOString().split('T')[0], weekEnd: we.toISOString().split('T')[0], data, totals: { totalLitres: data.reduce((s, r) => s + r.totalLitres, 0), totalCostZAR: data.reduce((s, r) => s + r.totalCostZAR, 0), totalCostUSD: data.reduce((s, r) => s + r.totalCostUSD, 0), totalDistance: data.reduce((s, r) => s + r.totalDistance, 0), fillCount: data.reduce((s, r) => s + r.fillCount, 0) } };
     });
-  }, [truckRecords]);
+  }, [filteredTruckRecords]);
 
   /** One entry per ISO week, containing DriverReport rows for that week's truck records. */
   const weeklyDriverBreakdown = useMemo(() => {
     const weekMap = new Map<string, { ws: Date; we: Date; recs: typeof truckRecords }>();
-    truckRecords.forEach(r => {
+    filteredTruckRecords.forEach(r => {
       const ws = _wkStart(new Date(r.date));
       const we = new Date(ws); we.setDate(we.getDate() + 6);
       const k = ws.toISOString().split('T')[0];
@@ -1076,12 +1137,12 @@ const DieselManagement = () => {
       const data = Array.from(dm.values()).sort((a, b) => b.totalLitres - a.totalLitres);
       return { weekKey, weekNumber: _wkNumber(ws), weekLabel: _wkLabel(ws, we), weekStart: ws.toISOString().split('T')[0], weekEnd: we.toISOString().split('T')[0], data, totals: { totalLitres: data.reduce((s, r) => s + r.totalLitres, 0), totalCostZAR: data.reduce((s, r) => s + r.totalCostZAR, 0), totalCostUSD: data.reduce((s, r) => s + r.totalCostUSD, 0), totalDistance: data.reduce((s, r) => s + r.totalDistance, 0), fillCount: data.reduce((s, r) => s + r.fillCount, 0) } };
     });
-  }, [truckRecords]);
+  }, [filteredTruckRecords]);
 
   /** One entry per ISO week, containing StationReport rows for that week's truck records. */
   const weeklyStationBreakdown = useMemo(() => {
     const weekMap = new Map<string, { ws: Date; we: Date; recs: typeof truckRecords }>();
-    truckRecords.forEach(r => {
+    filteredTruckRecords.forEach(r => {
       const ws = _wkStart(new Date(r.date));
       const we = new Date(ws); we.setDate(we.getDate() + 6);
       const k = ws.toISOString().split('T')[0];
@@ -1107,12 +1168,12 @@ const DieselManagement = () => {
       const data = Array.from(sm.values()).sort((a, b) => b.totalLitres - a.totalLitres);
       return { weekKey, weekNumber: _wkNumber(ws), weekLabel: _wkLabel(ws, we), weekStart: ws.toISOString().split('T')[0], weekEnd: we.toISOString().split('T')[0], data, totals: { totalLitres: data.reduce((s, r) => s + r.totalLitres, 0), totalCostZAR: data.reduce((s, r) => s + r.totalCostZAR, 0), totalCostUSD: data.reduce((s, r) => s + r.totalCostUSD, 0), fillCount: data.reduce((s, r) => s + r.fillCount, 0) } };
     });
-  }, [truckRecords]);
+  }, [filteredTruckRecords]);
 
   /** One entry per ISO week, containing ReeferFleetReport rows for that week's reefer records. */
   const weeklyReeferFleetBreakdown = useMemo(() => {
     const weekMap = new Map<string, { ws: Date; we: Date; recs: typeof reeferRecords }>();
-    reeferRecords.forEach(r => {
+    filteredReeferRecords.forEach(r => {
       const ws = _wkStart(new Date(r.date));
       const we = new Date(ws); we.setDate(we.getDate() + 6);
       const k = ws.toISOString().split('T')[0];
@@ -1143,12 +1204,12 @@ const DieselManagement = () => {
       const data = Array.from(fm.values()).sort((a, b) => b.totalLitres - a.totalLitres);
       return { weekKey, weekNumber: _wkNumber(ws), weekLabel: _wkLabel(ws, we), weekStart: ws.toISOString().split('T')[0], weekEnd: we.toISOString().split('T')[0], data, totals: { totalLitres: data.reduce((s, r) => s + r.totalLitres, 0), totalCostZAR: data.reduce((s, r) => s + r.totalCostZAR, 0), totalCostUSD: data.reduce((s, r) => s + r.totalCostUSD, 0), totalHoursOperated: data.reduce((s, r) => s + r.totalHoursOperated, 0), fillCount: data.reduce((s, r) => s + r.fillCount, 0) } };
     });
-  }, [reeferRecords]);
+  }, [filteredReeferRecords]);
 
   /** One entry per ISO week, containing ReeferDriverReport rows for that week's reefer records. */
   const weeklyReeferDriverBreakdown = useMemo(() => {
     const weekMap = new Map<string, { ws: Date; we: Date; recs: typeof reeferRecords }>();
-    reeferRecords.forEach(r => {
+    filteredReeferRecords.forEach(r => {
       const ws = _wkStart(new Date(r.date));
       const we = new Date(ws); we.setDate(we.getDate() + 6);
       const k = ws.toISOString().split('T')[0];
@@ -1180,12 +1241,12 @@ const DieselManagement = () => {
       const data = Array.from(dm.values()).sort((a, b) => b.totalLitres - a.totalLitres);
       return { weekKey, weekNumber: _wkNumber(ws), weekLabel: _wkLabel(ws, we), weekStart: ws.toISOString().split('T')[0], weekEnd: we.toISOString().split('T')[0], data, totals: { totalLitres: data.reduce((s, r) => s + r.totalLitres, 0), totalCostZAR: data.reduce((s, r) => s + r.totalCostZAR, 0), totalCostUSD: data.reduce((s, r) => s + r.totalCostUSD, 0), totalHoursOperated: data.reduce((s, r) => s + r.totalHoursOperated, 0), fillCount: data.reduce((s, r) => s + r.fillCount, 0) } };
     });
-  }, [reeferRecords]);
+  }, [filteredReeferRecords]);
 
   /** One entry per ISO week, containing StationReport rows for that week's reefer records. */
   const weeklyReeferStationBreakdown = useMemo(() => {
     const weekMap = new Map<string, { ws: Date; we: Date; recs: typeof reeferRecords }>();
-    reeferRecords.forEach(r => {
+    filteredReeferRecords.forEach(r => {
       const ws = _wkStart(new Date(r.date));
       const we = new Date(ws); we.setDate(we.getDate() + 6);
       const k = ws.toISOString().split('T')[0];
@@ -1211,7 +1272,7 @@ const DieselManagement = () => {
       const data = Array.from(sm.values()).sort((a, b) => b.totalLitres - a.totalLitres);
       return { weekKey, weekNumber: _wkNumber(ws), weekLabel: _wkLabel(ws, we), weekStart: ws.toISOString().split('T')[0], weekEnd: we.toISOString().split('T')[0], data, totals: { totalLitres: data.reduce((s, r) => s + r.totalLitres, 0), totalCostZAR: data.reduce((s, r) => s + r.totalCostZAR, 0), totalCostUSD: data.reduce((s, r) => s + r.totalCostUSD, 0), fillCount: data.reduce((s, r) => s + r.fillCount, 0) } };
     });
-  }, [reeferRecords]);
+  }, [filteredReeferRecords]);
 
   const buildExportInput = () => ({
     driverReports,
@@ -2611,15 +2672,16 @@ const DieselManagement = () => {
               {/* Report Type Selector */}
               <Card>
                 <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle>Diesel Reports</CardTitle>
-                      <CardDescription>
-                        Analyze fuel consumption by driver, fleet, or filling station
-                      </CardDescription>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      {/* Overall / Weekly toggle */}
+                  <div className="flex flex-col gap-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>Diesel Reports</CardTitle>
+                        <CardDescription>
+                          Analyze fuel consumption by driver, fleet, or filling station
+                        </CardDescription>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        {/* Overall / Weekly toggle */}
                       <div className="flex border border-border rounded-md overflow-hidden">
                         <button
                           type="button"
@@ -2641,6 +2703,44 @@ const DieselManagement = () => {
                         Export Reports
                       </Button>
                     </div>
+                  </div>
+                  {/* Report Period Filter */}
+                  <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3 pt-3 border-t border-border/40">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-muted-foreground shrink-0" />
+                      <Select value={reportPeriod} onValueChange={setReportPeriod}>
+                        <SelectTrigger className="w-[180px] h-9 text-sm">
+                          <SelectValue placeholder="Select period" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="1month">Last Month</SelectItem>
+                          <SelectItem value="3months">Last 3 Months</SelectItem>
+                          <SelectItem value="6months">Last 6 Months</SelectItem>
+                          <SelectItem value="1year">Last Year</SelectItem>
+                          <SelectItem value="all">All Time</SelectItem>
+                          <SelectItem value="custom">
+                            <span className="flex items-center gap-1.5">
+                              <CalendarRange className="w-3.5 h-3.5" />
+                              Custom Range
+                            </span>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {reportPeriod === 'custom' && (
+                      <div className="flex items-center gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">From</Label>
+                          <Input type="date" value={reportDateFrom} onChange={(e) => setReportDateFrom(e.target.value)} max={reportDateTo} className="h-9 w-[160px] text-sm" />
+                        </div>
+                        <span className="text-muted-foreground mt-5">→</span>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">To</Label>
+                          <Input type="date" value={reportDateTo} onChange={(e) => setReportDateTo(e.target.value)} min={reportDateFrom} className="h-9 w-[160px] text-sm" />
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   </div>
                 </CardHeader>
                 <CardContent>

@@ -3,12 +3,13 @@
 import { MobileShell } from "@/components/layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { PullToRefresh } from "@/components/ui/pull-to-refresh";
+import { Input } from "@/components/ui/input";
 import { BottomSheetSelect } from "@/components/ui/select";
 import { useAuth } from "@/contexts/auth-context";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate, formatNumber } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, Calendar, Clock, MapPin } from "lucide-react";
+import { ArrowRight, Calendar, CalendarRange, Clock, MapPin } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -119,18 +120,29 @@ export default function TripsPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  // Month selector state
+  // Date filter state
   const monthOptions = getMonthOptions();
   const [selectedMonth, setSelectedMonth] = useState(monthOptions[0].value);
+  const [filterMode, setFilterMode] = useState<"month" | "custom">("month");
+  const today = new Date().toISOString().split("T")[0];
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().split("T")[0];
+  const [customFrom, setCustomFrom] = useState(thirtyDaysAgo);
+  const [customTo, setCustomTo] = useState(today);
 
   // State for trip detail sheet
   const [selectedTrip, setSelectedTrip] = useState<TripEntry | null>(null);
 
-  // Parse selected month to get date range
+  // Compute effective date range based on filter mode
   const selectedMonthData = monthOptions.find(m => m.value === selectedMonth) || monthOptions[0];
-  const firstDayOfMonth = new Date(selectedMonthData.year, selectedMonthData.month, 1).toISOString().split("T")[0];
-  const lastDayOfMonth = new Date(selectedMonthData.year, selectedMonthData.month + 1, 0).toISOString().split("T")[0];
-  const monthName = new Date(selectedMonthData.year, selectedMonthData.month).toLocaleString("default", { month: "long" });
+  const dateFrom = filterMode === "month"
+    ? new Date(selectedMonthData.year, selectedMonthData.month, 1).toISOString().split("T")[0]
+    : customFrom;
+  const dateTo = filterMode === "month"
+    ? new Date(selectedMonthData.year, selectedMonthData.month + 1, 0).toISOString().split("T")[0]
+    : customTo;
+  const dateRangeLabel = filterMode === "month"
+    ? new Date(selectedMonthData.year, selectedMonthData.month).toLocaleString("default", { month: "long" })
+    : `${customFrom} → ${customTo}`;
 
   // Refresh Handler
   const handleRefresh = async () => {
@@ -189,7 +201,7 @@ export default function TripsPage() {
 
   // Fetch trips for current month
   const { data: monthlyTrips = [], isLoading: isLoadingTrips } = useQuery<TripEntry[]>({
-    queryKey: ["monthly-trips", assignedVehicle?.id, selectedMonth],
+    queryKey: ["monthly-trips", assignedVehicle?.id, dateFrom, dateTo],
     queryFn: async () => {
       if (!assignedVehicle?.id) return [];
 
@@ -215,8 +227,8 @@ export default function TripsPage() {
           created_at
         `)
         .eq("fleet_vehicle_id", assignedVehicle.id)
-        .gte("departure_date", firstDayOfMonth)
-        .lte("departure_date", lastDayOfMonth)
+        .gte("departure_date", dateFrom)
+        .lte("departure_date", dateTo)
         .order("departure_date", { ascending: false });
 
       if (error) {
@@ -333,18 +345,51 @@ export default function TripsPage() {
     <MobileShell>
       <PullToRefresh onRefresh={handleRefresh}>
         <div className="p-5 space-y-6 min-h-screen">
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
               <h1 className="text-xl font-semibold">Trips</h1>
+              <button
+                onClick={() => setFilterMode(filterMode === "month" ? "custom" : "month")}
+                className="flex items-center gap-1.5 text-xs text-primary font-medium px-2.5 py-1.5 rounded-md bg-primary/10 active:bg-primary/20 transition-colors"
+              >
+                <CalendarRange className="w-3.5 h-3.5" />
+                {filterMode === "month" ? "Custom Range" : "By Month"}
+              </button>
+            </div>
+
+            {filterMode === "month" ? (
               <BottomSheetSelect
                 value={selectedMonth}
                 onValueChange={setSelectedMonth}
                 options={monthOptions.map(opt => ({ value: opt.value, label: opt.label }))}
                 placeholder="Select month"
                 label="Select Month"
-                className="h-7 w-auto text-xs text-muted-foreground border-none px-0 py-0 bg-transparent"
+                className="h-8 text-xs text-muted-foreground"
               />
-            </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider mb-1 block">From</label>
+                  <Input
+                    type="date"
+                    value={customFrom}
+                    onChange={(e) => setCustomFrom(e.target.value)}
+                    max={customTo}
+                    className="h-9 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider mb-1 block">To</label>
+                  <Input
+                    type="date"
+                    value={customTo}
+                    onChange={(e) => setCustomTo(e.target.value)}
+                    min={customFrom}
+                    className="h-9 text-sm"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-3 gap-2">
@@ -355,7 +400,7 @@ export default function TripsPage() {
 
           <div className="space-y-2">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-medium">{monthName} Trips</p>
+              <p className="text-sm font-medium">{filterMode === "month" ? `${dateRangeLabel} Trips` : "Trips"}</p>
               <p className="text-xs text-muted-foreground">
                 {completedTrips} of {totalTrips} completed
               </p>
@@ -365,7 +410,7 @@ export default function TripsPage() {
             ) : allTrips.length === 0 ? (
               <EmptyState 
                 title="No Trips Found"
-                description={`No trips available for ${monthName}. Try selecting another month.`}
+                description={filterMode === "month" ? `No trips available for ${dateRangeLabel}. Try selecting another month.` : `No trips found for ${customFrom} to ${customTo}. Try adjusting the date range.`}
               />
             ) : (
               allTrips.map((entry) => (

@@ -1,5 +1,7 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -24,6 +26,7 @@ import
   {
     Building,
     Calendar,
+    CalendarRange,
     DollarSign,
     Download,
     FileText,
@@ -150,11 +153,31 @@ const CurrencyDisplay = ({ amounts, type = 'default' }: { amounts: CurrencyAmoun
 
 const TripReportsSection = ({ trips, costEntries }: TripReportsSectionProps) => {
   const [selectedPeriod, setSelectedPeriod] = useState<string>('3months');
+  const today = format(new Date(), 'yyyy-MM-dd');
+  const thirtyDaysAgo = format(subMonths(new Date(), 1), 'yyyy-MM-dd');
+  const [customFrom, setCustomFrom] = useState(thirtyDaysAgo);
+  const [customTo, setCustomTo] = useState(today);
   const { toast } = useToast();
+
+  // Human-readable period label for exports
+  const periodLabel = selectedPeriod === 'custom'
+    ? `${customFrom} to ${customTo}`
+    : selectedPeriod;
 
   // Filter trips by period
   const filteredTrips = useMemo(() => {
     const now = new Date();
+
+    // Custom date range
+    if (selectedPeriod === 'custom') {
+      const from = parseISO(customFrom);
+      const to = parseISO(customTo);
+      return trips.filter(trip => {
+        const tripDate = trip.departure_date ? parseISO(trip.departure_date) : null;
+        return tripDate && tripDate >= from && tripDate <= to;
+      });
+    }
+
     let startDate: Date;
 
     switch (selectedPeriod) {
@@ -179,7 +202,7 @@ const TripReportsSection = ({ trips, costEntries }: TripReportsSectionProps) => 
       const tripDate = trip.departure_date ? parseISO(trip.departure_date) : null;
       return tripDate && tripDate >= startDate;
     });
-  }, [trips, selectedPeriod]);
+  }, [trips, selectedPeriod, customFrom, customTo]);
 
   // Calculate costs for each trip by currency
   const getTripCostsByCurrency = useCallback((tripId: string): CurrencyAmounts => {
@@ -588,7 +611,7 @@ const TripReportsSection = ({ trips, costEntries }: TripReportsSectionProps) => 
 
       sWs.mergeCells('A2:D2');
       const sc = sWs.getCell('A2');
-      sc.value = `Period: ${selectedPeriod} \u2022 Generated: ${format(new Date(), 'dd MMMM yyyy, HH:mm')} \u2022 Car Craft Co`;
+      sc.value = `Period: ${periodLabel} \u2022 Generated: ${format(new Date(), 'dd MMMM yyyy, HH:mm')} \u2022 Car Craft Co`;
       sc.font = { italic: true, size: 9, color: { argb: '666666' }, name: 'Calibri' };
 
       sWs.getRow(4).values = ['Metric', 'Value'];
@@ -710,7 +733,7 @@ const TripReportsSection = ({ trips, costEntries }: TripReportsSectionProps) => 
 
       // Save
       const buffer = await wb.xlsx.writeBuffer();
-      saveAs(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `Trip_Reports_${selectedPeriod}_${new Date().toISOString().split('T')[0]}.xlsx`);
+      saveAs(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `Trip_Reports_${periodLabel}_${new Date().toISOString().split('T')[0]}.xlsx`);
 
       toast({
         title: 'Export Successful',
@@ -724,7 +747,7 @@ const TripReportsSection = ({ trips, costEntries }: TripReportsSectionProps) => 
         variant: 'destructive',
       });
     }
-  }, [selectedPeriod, overallStats, weeklySummaries, monthlySummaries, driverSummaries, clientSummaries, routeSummaries, truckSummaries, toast]);
+  }, [periodLabel, overallStats, weeklySummaries, monthlySummaries, driverSummaries, clientSummaries, routeSummaries, truckSummaries, toast]);
 
   // Export expenses to Excel
   const exportExpensesToExcel = useCallback(async () => {
@@ -770,7 +793,7 @@ const TripReportsSection = ({ trips, costEntries }: TripReportsSectionProps) => 
       sWs.getCell('A1').font = { bold: true, size: 16, color: { argb: '1F3864' }, name: 'Calibri' };
       sWs.getRow(1).height = 32;
       sWs.mergeCells('A2:D2');
-      sWs.getCell('A2').value = `Period: ${selectedPeriod} \u2022 Generated: ${format(new Date(), 'dd MMMM yyyy, HH:mm')}`;
+      sWs.getCell('A2').value = `Period: ${periodLabel} \u2022 Generated: ${format(new Date(), 'dd MMMM yyyy, HH:mm')}`;
       sWs.getCell('A2').font = { italic: true, size: 9, color: { argb: '666666' }, name: 'Calibri' };
       sWs.getRow(4).values = ['Metric', 'Value'];
       styleH(sWs, 4);
@@ -841,7 +864,7 @@ const TripReportsSection = ({ trips, costEntries }: TripReportsSectionProps) => 
       autoW(aWs);
 
       const buffer = await wb.xlsx.writeBuffer();
-      saveAs(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `Expense_Report_${selectedPeriod}_${new Date().toISOString().split('T')[0]}.xlsx`);
+      saveAs(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `Expense_Report_${periodLabel}_${new Date().toISOString().split('T')[0]}.xlsx`);
 
       toast({
         title: 'Export Successful',
@@ -855,7 +878,7 @@ const TripReportsSection = ({ trips, costEntries }: TripReportsSectionProps) => 
         variant: 'destructive',
       });
     }
-  }, [selectedPeriod, expenseSummaries, toast]);
+  }, [periodLabel, expenseSummaries, toast]);
 
   // Export expenses to PDF
   const exportExpensesToPDF = useCallback(() => {
@@ -870,7 +893,7 @@ const TripReportsSection = ({ trips, costEntries }: TripReportsSectionProps) => 
 
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
-      doc.text(`Period: ${selectedPeriod} | Generated: ${new Date().toLocaleDateString()}`, 14, 25);
+      doc.text(`Period: ${periodLabel} | Generated: ${new Date().toLocaleDateString()}`, 14, 25);
       doc.text(`Total entries: ${expenseSummaries.totalEntries}`, 14, 31);
 
       // Summary totals
@@ -978,7 +1001,7 @@ const TripReportsSection = ({ trips, costEntries }: TripReportsSectionProps) => 
         );
       }
 
-      doc.save(`Expense_Report_${selectedPeriod}_${new Date().toISOString().split('T')[0]}.pdf`);
+      doc.save(`Expense_Report_${periodLabel}_${new Date().toISOString().split('T')[0]}.pdf`);
 
       toast({
         title: 'PDF Generated',
@@ -992,32 +1015,73 @@ const TripReportsSection = ({ trips, costEntries }: TripReportsSectionProps) => 
         variant: 'destructive',
       });
     }
-  }, [selectedPeriod, expenseSummaries, toast]);
+  }, [periodLabel, expenseSummaries, toast]);
 
   return (
     <div className="space-y-5">
       {/* Glass Toolbar */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-card/80 backdrop-blur-sm border border-border/60 rounded-xl px-5 py-3.5 shadow-sm">
-        <span className="text-sm font-medium text-muted-foreground">Performance insights for {filteredTrips.length} trips</span>
-        <div className="flex items-center gap-2.5">
-          <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-            <SelectTrigger className="w-[180px] h-9 text-sm bg-background/80 border-border/50 rounded-lg">
-              <Calendar className="w-4 h-4 mr-2 text-muted-foreground" />
-              <SelectValue placeholder="Select period" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="1month">Last Month</SelectItem>
-              <SelectItem value="3months">Last 3 Months</SelectItem>
-              <SelectItem value="6months">Last 6 Months</SelectItem>
-              <SelectItem value="1year">Last Year</SelectItem>
-              <SelectItem value="all">All Time</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button variant="outline" size="sm" onClick={exportToExcel} className="h-9 gap-2 text-sm text-muted-foreground hover:text-foreground">
-            <Download className="w-4 h-4" />
-            Export
-          </Button>
+      <div className="flex flex-col gap-3 bg-card/80 backdrop-blur-sm border border-border/60 rounded-xl px-5 py-3.5 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <span className="text-sm font-medium text-muted-foreground">Performance insights for {filteredTrips.length} trips</span>
+          <div className="flex items-center gap-2.5">
+            <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+              <SelectTrigger className="w-[180px] h-9 text-sm bg-background/80 border-border/50 rounded-lg">
+                <Calendar className="w-4 h-4 mr-2 text-muted-foreground" />
+                <SelectValue placeholder="Select period" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1month">Last Month</SelectItem>
+                <SelectItem value="3months">Last 3 Months</SelectItem>
+                <SelectItem value="6months">Last 6 Months</SelectItem>
+                <SelectItem value="1year">Last Year</SelectItem>
+                <SelectItem value="all">All Time</SelectItem>
+                <SelectItem value="custom">
+                  <span className="flex items-center gap-1.5">
+                    <CalendarRange className="w-3.5 h-3.5" />
+                    Custom Range
+                  </span>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="sm" onClick={exportToExcel} className="h-9 gap-2 text-sm text-muted-foreground hover:text-foreground">
+              <Download className="w-4 h-4" />
+              Export
+            </Button>
+          </div>
         </div>
+
+        {/* Custom Date Range Inputs */}
+        {selectedPeriod === 'custom' && (
+          <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3 pt-1 border-t border-border/40">
+            <div className="flex items-center gap-2">
+              <CalendarRange className="w-4 h-4 text-muted-foreground shrink-0" />
+              <span className="text-sm font-medium text-muted-foreground">Date Range:</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">From</Label>
+                <Input
+                  type="date"
+                  value={customFrom}
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                  max={customTo}
+                  className="h-9 w-[160px] text-sm"
+                />
+              </div>
+              <span className="text-muted-foreground mt-5">→</span>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">To</Label>
+                <Input
+                  type="date"
+                  value={customTo}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                  min={customFrom}
+                  className="h-9 w-[160px] text-sm"
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Overall Summary Cards */}
