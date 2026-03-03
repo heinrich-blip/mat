@@ -33,8 +33,8 @@ export function MobileShell({
     return (
       <div className="flex items-center justify-center min-h-screen p-4">
         <div className="flex flex-col items-center gap-6 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-red-500/20 flex items-center justify-center">
-            <AlertCircle className="w-8 h-8 text-red-500" />
+          <div className="w-16 h-16 rounded-2xl bg-destructive/15 flex items-center justify-center">
+            <AlertCircle className="w-8 h-8 text-destructive" />
           </div>
           <div className="flex flex-col items-center gap-2">
             <p className="text-foreground font-semibold">Configuration Error</p>
@@ -43,7 +43,7 @@ export function MobileShell({
             </p>
             <button
               onClick={() => window.location.reload()}
-              className="mt-4 px-4 py-2 bg-violet-500 text-white rounded-lg text-sm font-medium hover:bg-violet-600 transition-colors"
+              className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
             >
               Retry
             </button>

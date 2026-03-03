@@ -43,7 +43,7 @@ export function BottomNav() {
     <nav className="fixed bottom-4 left-4 right-4 z-50 safe-area-bottom">
       <div className="relative mx-auto max-w-md">
         {/* Main nav container — light, clean card */}
-        <div className="relative flex items-center justify-around h-[72px] px-3 rounded-[22px] bg-card/95 backdrop-blur-md border border-border shadow-xl shadow-black/10">
+        <div className="relative flex items-center justify-around h-[72px] px-3 rounded-[22px] bg-card border border-border shadow-lg">
           {navItems.map((item) => {
             const isActive = pathname === item.href;
             const Icon = item.icon;

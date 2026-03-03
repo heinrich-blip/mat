@@ -407,9 +407,9 @@ function TripCard({
   onOpenDetail: () => void;
 }) {
   const statusColor = entry.status === "completed"
-    ? "bg-emerald-500/15 text-emerald-400"
+    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
     : entry.status === "in_progress" || entry.status === "active"
-    ? "bg-blue-500/15 text-blue-400"
+    ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
     : "bg-muted text-muted-foreground";
 
   return (
@@ -424,8 +424,8 @@ function TripCard({
             {tracker && (
               <span className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
                 tracker.is_completed
-                  ? "bg-emerald-500/15 text-emerald-400"
-                  : "bg-blue-500/15 text-blue-400"
+                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                  : "bg-blue-500/10 text-blue-600 dark:text-blue-400"
               }`}>
                 <Clock className="w-2.5 h-2.5" />
                 {tracker.is_completed ? "360°" : `P${tracker.current_phase}`}
@@ -449,7 +449,7 @@ function TripCard({
           </span>
           <div className="flex items-center gap-2">
             {hasFreight && (
-              <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-yellow-500/15 text-yellow-400">
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-yellow-500/10 text-yellow-600 dark:text-yellow-400">
                 Freight Linked
               </span>
             )}

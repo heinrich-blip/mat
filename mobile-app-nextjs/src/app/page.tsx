@@ -21,7 +21,6 @@ import
     Droplet,
     Gauge,
     MapPin,
-    Sparkles,
     TrendingUp,
     Truck
   } from "lucide-react";
@@ -295,30 +294,24 @@ export default function HomePage() {
         {/* Modern Header */}
         <div className="flex items-center justify-between animate-fade-up">
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <Sparkles className="w-4 h-4 text-violet-400" />
-              <p className="text-xs text-muted-foreground font-semibold uppercase tracking-widest">
-                {getGreeting()}
-              </p>
-            </div>
-            <h1 className="text-2xl font-bold text-gradient">
+            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-widest">
+              {getGreeting()}
+            </p>
+            <h1 className="text-2xl font-bold text-foreground">
               {driverName}
             </h1>
           </div>
-          <div className="relative">
-            <div className="absolute -inset-1 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 opacity-50 blur-sm" />
-            <Avatar className="relative h-12 w-12 ring-2 ring-white/20">
-              <AvatarImage src={profile?.avatar_url || undefined} />
-              <AvatarFallback className="bg-gradient-to-br from-violet-500 to-violet-600 text-white text-sm font-bold">
-                {getInitials(driverName)}
-              </AvatarFallback>
-            </Avatar>
-          </div>
+          <Avatar className="h-12 w-12 ring-2 ring-border">
+            <AvatarImage src={profile?.avatar_url || undefined} />
+            <AvatarFallback className="bg-primary text-primary-foreground text-sm font-bold">
+              {getInitials(driverName)}
+            </AvatarFallback>
+          </Avatar>
         </div>
 
         {/* Assigned Vehicle Card */}
         {vehicleLoading ? (
-          <div className="card-glass p-5 animate-fade-up stagger-1">
+          <div className="rounded-2xl border border-border bg-card shadow-sm p-5 animate-fade-up stagger-1">
             <div className="flex items-center gap-2 mb-4">
               <div className="w-1.5 h-1.5 rounded-full bg-muted animate-pulse" />
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
@@ -326,7 +319,7 @@ export default function HomePage() {
               </p>
             </div>
             <div className="flex items-center gap-4">
-              <div className="icon-container icon-container-lg bg-muted/20 animate-pulse">
+              <div className="icon-container icon-container-lg bg-muted/30 animate-pulse">
                 <Truck className="w-6 h-6 text-muted-foreground/50" strokeWidth={2} />
               </div>
               <div className="flex-1 min-w-0 space-y-2">
@@ -336,16 +329,16 @@ export default function HomePage() {
             </div>
           </div>
         ) : vehicle ? (
-          <div className="card-glass p-5 animate-fade-up stagger-1">
+          <div className="rounded-2xl border border-border bg-card shadow-sm p-5 animate-fade-up stagger-1">
             <div className="flex items-center gap-2 mb-4">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">
                 Active Vehicle
               </p>
             </div>
             <div className="flex items-center gap-4">
-              <div className="icon-container icon-container-lg icon-gradient-purple">
-                <Truck className="w-6 h-6 text-white" strokeWidth={2} />
+              <div className="icon-container icon-container-lg bg-primary/10">
+                <Truck className="w-6 h-6 text-primary" strokeWidth={2} />
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-xl">{vehicle.fleet_number}</p>
@@ -356,7 +349,7 @@ export default function HomePage() {
               <ChevronRight className="w-5 h-5 text-muted-foreground" />
             </div>
             {vehicle.make && vehicle.model && (
-              <div className="mt-4 pt-4 border-t border-white/5">
+              <div className="mt-4 pt-4 border-t border-border">
                 <p className="text-xs text-muted-foreground">
                   {vehicle.make} {vehicle.model}
                 </p>
@@ -364,9 +357,9 @@ export default function HomePage() {
             )}
           </div>
         ) : (
-          <div className="card-glass p-8 animate-fade-up stagger-1">
+          <div className="rounded-2xl border border-border bg-card shadow-sm p-8 animate-fade-up stagger-1">
             <div className="flex flex-col items-center justify-center text-center">
-              <div className="icon-container icon-container-lg bg-white/5 mb-4">
+              <div className="icon-container icon-container-lg bg-muted/50 mb-4">
                 <AlertCircle className="w-6 h-6 text-muted-foreground" strokeWidth={1.5} />
               </div>
               <p className="font-semibold">No Vehicle Assigned</p>
@@ -385,10 +378,10 @@ export default function HomePage() {
         {/* Stats Grid - 4 key metrics */}
         <div className="grid grid-cols-2 gap-3 animate-fade-up stagger-2">
           {/* KM Traveled */}
-          <div className="card-glow p-4">
+          <div className="rounded-2xl border border-border bg-card shadow-sm p-4">
             <div className="flex items-center gap-2 mb-2">
-              <div className="icon-container icon-container-sm bg-orange-500/20">
-                <Gauge className="w-4 h-4 text-orange-400" strokeWidth={2} />
+              <div className="icon-container icon-container-sm bg-orange-500/10">
+                <Gauge className="w-4 h-4 text-orange-500" strokeWidth={2} />
               </div>
               <p className="stat-label">KM Traveled</p>
             </div>
@@ -398,10 +391,10 @@ export default function HomePage() {
 
           {/* Diesel Consumption */}
           <Link href="/diesel" className="block">
-            <div className="card-glow p-4 h-full active:scale-[0.98] transition-transform">
+            <div className="rounded-2xl border border-border bg-card shadow-sm p-4 h-full active:scale-[0.98] transition-transform">
               <div className="flex items-center gap-2 mb-2">
-                <div className="icon-container icon-container-sm icon-gradient-blue">
-                  <Droplet className="w-4 h-4 text-white" strokeWidth={2} />
+                <div className="icon-container icon-container-sm bg-blue-500/10">
+                  <Droplet className="w-4 h-4 text-blue-500" strokeWidth={2} />
                 </div>
                 <p className="stat-label">Diesel</p>
               </div>
@@ -414,10 +407,10 @@ export default function HomePage() {
 
           {/* Total Trips */}
           <Link href="/trip" className="block">
-            <div className="card-glow p-4 h-full active:scale-[0.98] transition-transform">
+            <div className="rounded-2xl border border-border bg-card shadow-sm p-4 h-full active:scale-[0.98] transition-transform">
               <div className="flex items-center gap-2 mb-2">
-                <div className="icon-container icon-container-sm icon-gradient-emerald">
-                  <Activity className="w-4 h-4 text-white" strokeWidth={2} />
+                <div className="icon-container icon-container-sm bg-emerald-500/10">
+                  <Activity className="w-4 h-4 text-emerald-500" strokeWidth={2} />
                 </div>
                 <p className="stat-label">Trips</p>
               </div>
@@ -430,10 +423,10 @@ export default function HomePage() {
 
           {/* Diesel Cost */}
           <Link href="/diesel" className="block">
-            <div className="card-glow p-4 h-full active:scale-[0.98] transition-transform">
+            <div className="rounded-2xl border border-border bg-card shadow-sm p-4 h-full active:scale-[0.98] transition-transform">
               <div className="flex items-center gap-2 mb-2">
-                <div className="icon-container icon-container-sm bg-amber-500/20">
-                  <TrendingUp className="w-4 h-4 text-amber-400" strokeWidth={2} />
+                <div className="icon-container icon-container-sm bg-amber-500/10">
+                  <TrendingUp className="w-4 h-4 text-amber-500" strokeWidth={2} />
                 </div>
                 <p className="stat-label">Fuel Cost</p>
               </div>
@@ -450,12 +443,12 @@ export default function HomePage() {
             {/* Show recent trips */}
             {recentTrips.slice(0, 3).map((trip) => (
               <Link href="/trip" key={trip.id} className="block">
-                <div className="card-glass p-3 flex items-center gap-3 active:scale-[0.98] transition-transform">
+                <div className="rounded-2xl border border-border bg-card shadow-sm p-3 flex items-center gap-3 active:scale-[0.98] transition-transform">
                   <div className={`icon-container icon-container-sm ${
-                    trip.status === "completed" ? "bg-emerald-500/20" : "bg-amber-500/20"
+                    trip.status === "completed" ? "bg-emerald-500/10" : "bg-amber-500/10"
                   }`}>
                     <MapPin className={`w-4 h-4 ${
-                      trip.status === "completed" ? "text-emerald-400" : "text-amber-400"
+                      trip.status === "completed" ? "text-emerald-500" : "text-amber-500"
                     }`} strokeWidth={2} />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -473,9 +466,9 @@ export default function HomePage() {
             {/* Show recent diesel */}
             {recentDiesel.slice(0, 2).map((entry) => (
               <Link href="/diesel" key={entry.id} className="block">
-                <div className="card-glass p-3 flex items-center gap-3 active:scale-[0.98] transition-transform">
-                  <div className="icon-container icon-container-sm bg-blue-500/20">
-                    <Droplet className="w-4 h-4 text-blue-400" strokeWidth={2} />
+                <div className="rounded-2xl border border-border bg-card shadow-sm p-3 flex items-center gap-3 active:scale-[0.98] transition-transform">
+                  <div className="icon-container icon-container-sm bg-blue-500/10">
+                    <Droplet className="w-4 h-4 text-blue-500" strokeWidth={2} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium">
@@ -486,7 +479,7 @@ export default function HomePage() {
                     </p>
                   </div>
                   {entry.total_cost && (
-                    <p className="text-sm font-semibold text-blue-400">
+                    <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">
                       {formatCurrency(entry.total_cost, entry.currency || "USD")}
                     </p>
                   )}
@@ -495,7 +488,7 @@ export default function HomePage() {
             ))}
 
             {recentTrips.length === 0 && recentDiesel.length === 0 && (
-              <div className="card-glass p-6 text-center">
+              <div className="rounded-2xl border border-border bg-card shadow-sm p-6 text-center">
                 <p className="text-sm text-muted-foreground">No recent activity</p>
                 <p className="text-xs text-muted-foreground mt-1">
                   Record a trip or diesel fill-up to get started
@@ -510,18 +503,18 @@ export default function HomePage() {
           <p className="section-title mb-3">Quick Actions</p>
           <div className="grid grid-cols-2 gap-3">
             <Link href="/diesel" className="block">
-              <div className="card-glass flex flex-col items-center justify-center gap-2 p-4 active:scale-[0.98] transition-transform">
-                <div className="icon-container icon-container-md icon-gradient-blue">
-                  <Droplet className="w-5 h-5 text-white" strokeWidth={2} />
+              <div className="rounded-2xl border border-border bg-card shadow-sm flex flex-col items-center justify-center gap-2 p-4 active:scale-[0.98] transition-transform">
+                <div className="icon-container icon-container-md bg-blue-500/10">
+                  <Droplet className="w-5 h-5 text-blue-500" strokeWidth={2} />
                 </div>
                 <p className="text-sm font-semibold">Record Diesel</p>
               </div>
             </Link>
 
             <Link href="/trip" className="block">
-              <div className="card-glass flex flex-col items-center justify-center gap-2 p-4 active:scale-[0.98] transition-transform">
-                <div className="icon-container icon-container-md icon-gradient-emerald">
-                  <TrendingUp className="w-5 h-5 text-white" strokeWidth={2} />
+              <div className="rounded-2xl border border-border bg-card shadow-sm flex flex-col items-center justify-center gap-2 p-4 active:scale-[0.98] transition-transform">
+                <div className="icon-container icon-container-md bg-emerald-500/10">
+                  <TrendingUp className="w-5 h-5 text-emerald-500" strokeWidth={2} />
                 </div>
                 <p className="text-sm font-semibold">View Trips</p>
               </div>

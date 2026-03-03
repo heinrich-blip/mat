@@ -75,20 +75,20 @@ export function PwaInstallPrompt() {
 
   return (
     <div className="fixed inset-x-0 top-0 z-[60] p-4 safe-area-top animate-fade-up">
-      <div className="mx-auto max-w-md rounded-2xl bg-gradient-to-r from-violet-600 to-purple-600 p-4 shadow-2xl shadow-violet-500/30 border border-white/20">
+      <div className="mx-auto max-w-md rounded-2xl bg-primary p-4 shadow-lg border border-primary/20">
         <div className="flex items-start gap-3">
           {/* Icon */}
-          <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
-            <Download className="w-6 h-6 text-white" />
+          <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-primary-foreground/15 flex items-center justify-center">
+            <Download className="w-6 h-6 text-primary-foreground" />
           </div>
 
           {/* Content */}
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-white">
+            <p className="text-sm font-bold text-primary-foreground">
               Install Matanuska App
             </p>
             {isIos ? (
-              <p className="text-xs text-white/80 mt-1">
+              <p className="text-xs text-primary-foreground/80 mt-1">
                 Tap{" "}
                 <span className="inline-flex items-center px-1">
                   <svg
@@ -107,7 +107,7 @@ export function PwaInstallPrompt() {
                 Share then <strong>&quot;Add to Home Screen&quot;</strong>
               </p>
             ) : (
-              <p className="text-xs text-white/80 mt-1">
+              <p className="text-xs text-primary-foreground/80 mt-1">
                 Add to your home screen for the best experience
               </p>
             )}
@@ -116,7 +116,7 @@ export function PwaInstallPrompt() {
             {!isIos && (
               <button
                 onClick={handleInstall}
-                className="mt-2.5 w-full py-2.5 px-4 rounded-xl bg-white text-violet-700 text-sm font-bold active:scale-[0.97] transition-transform shadow-lg"
+                className="mt-2.5 w-full py-2.5 px-4 rounded-xl bg-primary-foreground text-primary text-sm font-bold active:scale-[0.97] transition-transform shadow-sm"
                 aria-label="Install app to home screen"
               >
                 Install App
@@ -127,11 +127,11 @@ export function PwaInstallPrompt() {
           {/* Dismiss */}
           <button
             onClick={handleDismiss}
-            className="flex-shrink-0 w-8 h-8 rounded-full bg-white/15 flex items-center justify-center active:bg-white/25 transition-colors"
+            className="flex-shrink-0 w-8 h-8 rounded-full bg-primary-foreground/15 flex items-center justify-center active:bg-primary-foreground/25 transition-colors"
             aria-label="Dismiss install prompt"
             title="Dismiss"
           >
-            <X className="w-4 h-4 text-white" aria-hidden="true" />
+            <X className="w-4 h-4 text-primary-foreground" aria-hidden="true" />
           </button>
         </div>
       </div>

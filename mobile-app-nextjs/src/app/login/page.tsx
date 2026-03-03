@@ -7,15 +7,7 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { AnimatePresence, motion } from "framer-motion";
-import
-  {
-    Eye,
-    EyeOff,
-    Lock,
-    LogIn,
-    Mail
-  } from "lucide-react";
+
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -47,9 +39,7 @@ export default function LoginPage() {
           title: "Welcome!",
           description: "Signing you in...",
         });
-        // Use router.refresh to sync server state, then redirect
         router.refresh();
-        // Short delay to ensure cookies are synced, then redirect
         setTimeout(() => {
           router.push("/");
         }, 500);
@@ -67,97 +57,46 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-background safe-area-top safe-area-bottom">
-      {/* Animated Background Elements */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-96 h-96 bg-violet-500/20 rounded-full blur-[100px]" />
-        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-blue-500/15 rounded-full blur-[100px]" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-violet-600/10 rounded-full blur-[120px]" />
+      <div className="flex-1 flex flex-col items-center justify-center px-6 py-12">
+        {/* Brand Header */}
+        <div className="text-center mb-10 animate-fade-up">
+          <h1 className="text-2xl font-bold text-foreground">Matanuska Fleet</h1>
+          <p className="text-sm text-muted-foreground mt-1">Driver Portal</p>
+        </div>
 
-        {/* Floating particles - using percentage-based positioning */}
-        {Array.from({ length: 12 }).map((_, i) => (
-          <motion.div
-            key={i}
-            className="absolute w-1 h-1 bg-violet-400/30 rounded-full"
-            style={{
-              left: `${(i * 8 + 5) % 100}%`,
-              top: `${(i * 7 + 10) % 100}%`,
-            }}
-            animate={{
-              y: [0, -20, 20, 0],
-              x: [0, 10, -10, 0],
-              opacity: [0.3, 0.6, 0.3],
-            }}
-            transition={{
-              duration: 3 + (i % 3),
-              repeat: Infinity,
-              delay: i * 0.2,
-            }}
-          />
-        ))}
-      </div>
-
-      <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 relative z-10">
-        {/* Login Form */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
-          className="w-full max-w-md"
-        >
-          <Card className="border border-white/12 shadow-2xl shadow-violet-500/10 backdrop-blur-xl bg-black/35">
-            <CardContent className="p-8">
-              <div className="text-center mb-8">
-                <h2 className="text-2xl font-semibold">Welcome Back</h2>
-                <p className="text-sm text-muted-foreground mt-2">
-                  Enter your credentials to access the portal
+        {/* Login Card */}
+        <div className="w-full max-w-md animate-fade-up stagger-1">
+          <Card className="shadow-md">
+            <CardContent className="p-6 sm:p-8">
+              <div className="text-center mb-6">
+                <h2 className="text-xl font-semibold">Welcome Back</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Enter your credentials to continue
                 </p>
               </div>
 
-              <form onSubmit={handleSubmit} className="space-y-6">
+              <form onSubmit={handleSubmit} className="space-y-5">
                 {/* Email Field */}
-                <div className="space-y-3">
+                <div className="space-y-2">
                   <Label htmlFor="email" className="text-sm font-medium">
                     Email Address
                   </Label>
-                  <div className="relative group">
-                    <div className="absolute left-4 top-1/2 -translate-y-1/2">
-                      <Mail className="w-5 h-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
-                    </div>
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="name@company.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                      autoFocus
-                      autoComplete="email"
-                      disabled={isLoading}
-                      className={cn(
-                        "h-12 pl-12 pr-4 text-base",
-                        "border-border/50 bg-background",
-                        "focus:border-primary focus:ring-2 focus:ring-primary/20",
-                        "transition-all duration-300",
-                        "placeholder:text-muted-foreground/60"
-                      )}
-                    />
-                    <AnimatePresence>
-                      {email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && (
-                        <motion.div
-                          initial={{ opacity: 0, scale: 0.8 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.8 }}
-                          className="absolute right-3 top-1/2 -translate-y-1/2"
-                        >
-                          <div className="w-2 h-2 bg-green-500 rounded-full" />
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="name@company.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    autoFocus
+                    autoComplete="email"
+                    disabled={isLoading}
+                    className="h-12 px-4 text-base"
+                  />
                 </div>
 
                 {/* Password Field */}
-                <div className="space-y-3">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="password" className="text-sm font-medium">
                       Password
@@ -165,138 +104,81 @@ export default function LoginPage() {
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
+                      className="text-xs text-muted-foreground hover:text-primary transition-colors"
                     >
-                      {showPassword ? (
-                        <>
-                          <EyeOff className="w-3.5 h-3.5" />
-                          Hide
-                        </>
-                      ) : (
-                        <>
-                          <Eye className="w-3.5 h-3.5" />
-                          Show
-                        </>
-                      )}
+                      {showPassword ? "Hide" : "Show"}
                     </button>
                   </div>
-                  <div className="relative group">
-                    <div className="absolute left-4 top-1/2 -translate-y-1/2">
-                      <Lock className="w-5 h-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
-                    </div>
-                    <Input
-                      id="password"
-                      type={showPassword ? "text" : "password"}
-                      placeholder="Enter your password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                      autoComplete="current-password"
-                      disabled={isLoading}
-                      className={cn(
-                        "h-12 pl-12 pr-4 text-base",
-                        "border-border/50 bg-background",
-                        "focus:border-primary focus:ring-2 focus:ring-primary/20",
-                        "transition-all duration-300",
-                        "placeholder:text-muted-foreground/60"
-                      )}
-                    />
-                  </div>
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    autoComplete="current-password"
+                    disabled={isLoading}
+                    className="h-12 px-4 text-base"
+                  />
                 </div>
 
                 {/* Submit Button */}
-                <motion.div
-                  whileHover={{ scale: 1.01 }}
-                  whileTap={{ scale: 0.99 }}
+                <Button
+                  type="submit"
+                  disabled={isLoading}
+                  className={cn(
+                    "w-full h-12 text-base font-semibold rounded-xl",
+                    "transition-all duration-200"
+                  )}
                 >
-                  <Button
-                    type="submit"
-                    disabled={isLoading}
-                    className={cn(
-                      "w-full h-14 text-base font-semibold rounded-2xl",
-                      "bg-gradient-to-r from-violet-500 to-violet-600",
-                      "hover:from-violet-600 hover:to-violet-700",
-                      "shadow-xl shadow-violet-500/30",
-                      "transition-all duration-300",
-                      "relative overflow-hidden group"
-                    )}
-                  >
-                    <span className="relative z-10 flex items-center justify-center gap-2">
-                      {isLoading ? (
-                        <>
-                          <div className="w-5 h-5 border-2 border-background border-t-transparent rounded-full animate-spin" />
-                          Signing In...
-                        </>
-                      ) : (
-                        <>
-                          <LogIn className="w-5 h-5" />
-                          Sign In
-                        </>
-                      )}
+                  {isLoading ? (
+                    <span className="flex items-center gap-2">
+                      <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
+                      Signing In...
                     </span>
-
-                    {/* Button shine effect */}
-                    <motion.div
-                      className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
-                      initial={{ x: "-100%" }}
-                      whileHover={{ x: "100%" }}
-                      transition={{ duration: 0.6 }}
-                    />
-                  </Button>
-                </motion.div>
+                  ) : (
+                    "Sign In"
+                  )}
+                </Button>
               </form>
-
             </CardContent>
           </Card>
+        </div>
 
-          {/* Footer */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.5 }}
-            className="text-center mt-8"
-          >
-            <p className="text-sm text-muted-foreground">
-              Need help?{" "}
-              <button
-                onClick={() => {
-                  toast({
-                    title: "Contact Support",
-                    description: "Please contact your administrator for assistance",
-                  });
-                }}
-                className="text-primary hover:text-primary/80 font-medium transition-colors"
-              >
-                Contact Support
-              </button>
-            </p>
-            <p className="text-xs text-muted-foreground/60 mt-4">
-              Secure login powered by enterprise authentication
-            </p>
-          </motion.div>
-        </motion.div>
+        {/* Footer */}
+        <div className="text-center mt-8 animate-fade-up stagger-2">
+          <p className="text-sm text-muted-foreground">
+            Need help?{" "}
+            <button
+              onClick={() => {
+                toast({
+                  title: "Contact Support",
+                  description: "Please contact your administrator for assistance",
+                });
+              }}
+              className="text-primary hover:text-primary/80 font-medium transition-colors"
+            >
+              Contact Support
+            </button>
+          </p>
+          <p className="text-xs text-muted-foreground/60 mt-4">
+            Secure login powered by enterprise authentication
+          </p>
+        </div>
       </div>
 
       {/* Loading Overlay */}
-      <AnimatePresence>
-        {isLoading && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/80 backdrop-blur-xl z-50 flex items-center justify-center"
-          >
-            <div className="text-center">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-violet-600 animate-pulse shadow-xl shadow-violet-500/40 mx-auto mb-4 flex items-center justify-center">
-              </div>
-              <p className="text-lg font-semibold">Authenticating...</p>
-              <p className="text-sm text-muted-foreground mt-2">
-                Securing your connection
-              </p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {isLoading && (
+        <div className="fixed inset-0 bg-background/80 z-50 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-10 h-10 border-3 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-lg font-semibold">Authenticating...</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Securing your connection
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
