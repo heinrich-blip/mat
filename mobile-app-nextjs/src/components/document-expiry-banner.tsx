@@ -2,7 +2,6 @@
 
 import { Badge } from "@/components/ui/badge";
 import type { DocumentAlert } from "@/hooks/use-driver-documents";
-import { DOCUMENT_TYPES } from "@/hooks/use-driver-documents";
 import { AlertTriangle, Clock, ShieldAlert, X } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
