@@ -21,6 +21,20 @@ import { Trip } from "@/types/operations";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+// Helper function to extract fleet number from vehicle name
+const extractFleetNumberFromName = (name: string | null): string | null => {
+  if (!name) return null;
+  const nameParts = name.split(' - ');
+  if (nameParts.length > 0) {
+    const possibleFleetNumber = nameParts[0].trim();
+    // Check if it looks like a fleet number (e.g., "21H", "31H", "14L")
+    if (possibleFleetNumber.match(/^[\d]+[A-Z]+$|^[A-Z]+$/)) {
+      return possibleFleetNumber;
+    }
+  }
+  return name; // fallback to full name if pattern doesn't match
+};
+
 const TripManagement = () => {
   const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
@@ -65,23 +79,23 @@ const TripManagement = () => {
 
       // Then fetch cost entries for all trips (including validation status fields)
       const tripIds = (tripsData || []).map(t => t.id);
-      const costEntriesMap: Record<string, Array<{ 
-        id: string; 
-        amount: number; 
-        currency?: string; 
-        category?: string; 
+      const costEntriesMap: Record<string, Array<{
+        id: string;
+        amount: number;
+        currency?: string;
+        category?: string;
         sub_category?: string;
         is_flagged?: boolean;
         investigation_status?: string;
         flag_reason?: string;
       }>> = {};
-      
+
       if (tripIds.length > 0) {
         const { data: costData } = await supabase
           .from('cost_entries')
           .select('id, trip_id, amount, currency, category, sub_category, is_flagged, investigation_status, flag_reason')
           .in('trip_id', tripIds);
-        
+
         // Group costs by trip_id
         (costData || []).forEach(cost => {
           if (cost.trip_id) {
@@ -98,23 +112,35 @@ const TripManagement = () => {
         // Note: fleet_vehicle_id join - cast needed until types are regenerated after migration
         const fleetVehicle = (trip as unknown as { vehicles?: { id: string; fleet_number: string | null; registration_number: string } | null }).vehicles;
         const wialonVehicle = trip.wialon_vehicles as { id: string; fleet_number: string | null; name: string } | null;
+
+        // Determine the display fleet number - extract from name if needed
+        let displayFleetNumber = null;
+        if (fleetVehicle?.fleet_number) {
+          displayFleetNumber = fleetVehicle.fleet_number;
+        } else if (wialonVehicle?.fleet_number) {
+          displayFleetNumber = wialonVehicle.fleet_number;
+        } else if (wialonVehicle?.name) {
+          // Extract just the first part before " - " (e.g., "31H" from "31H - AGZ 1963 (Int sim)")
+          displayFleetNumber = extractFleetNumberFromName(wialonVehicle.name);
+        }
+
         // Get cost entries for this trip
         const costEntries = costEntriesMap[trip.id] || [];
-        
+
         // Compute warning/validation stats
         const flaggedCosts = costEntries.filter(ce => ce.is_flagged);
-        const pendingCosts = costEntries.filter(ce => 
+        const pendingCosts = costEntries.filter(ce =>
           ce.investigation_status === 'pending' || ce.investigation_status === 'in_progress'
         );
         const hasCosts = costEntries.length > 0;
-        
+
         // Calculate days since trip started (for "in progress" indicator)
         const departureDate = trip.departure_date ? new Date(trip.departure_date) : null;
         const daysInProgress = departureDate ? Math.floor((Date.now() - departureDate.getTime()) / (1000 * 60 * 60 * 24)) : 0;
-        
+
         return {
           ...trip,
-          fleet_number: fleetVehicle?.fleet_number || wialonVehicle?.fleet_number || wialonVehicle?.name || null,
+          fleet_number: displayFleetNumber,
           payment_status: trip.payment_status || 'unpaid',
           status: trip.status || 'active',
           revenue_currency: trip.revenue_currency || 'ZAR',

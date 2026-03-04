@@ -3,11 +3,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -18,29 +18,29 @@ import { supabase } from '@/integrations/supabase/client';
 import type { EditHistoryRecord } from '@/types/forms';
 import { useQueryClient } from '@tanstack/react-query';
 import { addDays, format, getISOWeek, parseISO, startOfWeek } from 'date-fns';
-import { 
-    AlertTriangle, 
-    Building, 
-    CheckCircle, 
-    ChevronDown, 
-    ChevronRight, 
-    DollarSign, 
-    Download, 
-    Edit, 
-    Eye, 
-    Filter, 
-    FilterX, 
-    Gauge, 
-    History, 
-    MoreVertical, 
-    RefreshCw, 
-    RotateCcw, 
-    Search, 
-    Settings, 
-    Truck, 
-    User, 
-    X,
-    CheckCircle2
+import {
+  AlertTriangle,
+  Building,
+  CheckCircle,
+  ChevronDown,
+  ChevronRight,
+  DollarSign,
+  Download,
+  Edit,
+  Eye,
+  Filter,
+  FilterX,
+  Gauge,
+  History,
+  MoreVertical,
+  RefreshCw,
+  RotateCcw,
+  Search,
+  Settings,
+  Truck,
+  User,
+  X,
+  CheckCircle2
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import CompletedTripEditModal from './CompletedTripEditModal';
@@ -132,6 +132,7 @@ const CompletedTrips = ({ trips, onView, onRefresh, isLoading = false }: Complet
   const [clientFilter, setClientFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [viewMode, setViewMode] = useState<'grouped' | 'list'>('grouped');
+  const [showMissingRevenueOnly, setShowMissingRevenueOnly] = useState<boolean>(false);
 
   // Expanded state
   const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(new Set());
@@ -196,6 +197,7 @@ const CompletedTrips = ({ trips, onView, onRefresh, isLoading = false }: Complet
       if (fleetFilter !== 'all' && trip.fleet_number !== fleetFilter) return false;
       if (driverFilter !== 'all' && trip.driver_name !== driverFilter) return false;
       if (clientFilter !== 'all' && trip.client_name !== clientFilter) return false;
+      if (showMissingRevenueOnly && trip.base_revenue && trip.base_revenue > 0) return false;
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
         return (
@@ -210,7 +212,7 @@ const CompletedTrips = ({ trips, onView, onRefresh, isLoading = false }: Complet
       }
       return true;
     });
-  }, [trips, fleetFilter, driverFilter, clientFilter, searchQuery]);
+  }, [trips, fleetFilter, driverFilter, clientFilter, searchQuery, showMissingRevenueOnly]);
 
   // Group trips by week
   const tripsByWeek = useMemo(() => {
@@ -239,13 +241,14 @@ const CompletedTrips = ({ trips, onView, onRefresh, isLoading = false }: Complet
     return sorted;
   }, [filteredTrips]);
 
-  const hasActiveFilters = fleetFilter !== 'all' || driverFilter !== 'all' || clientFilter !== 'all' || searchQuery !== '';
+  const hasActiveFilters = fleetFilter !== 'all' || driverFilter !== 'all' || clientFilter !== 'all' || searchQuery !== '' || showMissingRevenueOnly;
 
   const clearFilters = () => {
     setFleetFilter('all');
     setDriverFilter('all');
     setClientFilter('all');
     setSearchQuery('');
+    setShowMissingRevenueOnly(false);
   };
 
   // Detect duplicate POD numbers
@@ -266,13 +269,14 @@ const CompletedTrips = ({ trips, onView, onRefresh, isLoading = false }: Complet
     }, 0);
     const totalDistance = filteredTrips.reduce((sum, t) => sum + (t.distance_km || 0), 0);
     const avgRevenuePerTrip = filteredTrips.length > 0 ? totalRevenue / filteredTrips.length : 0;
-    
+
     // Warning stats
     const tripsWithFlaggedCosts = filteredTrips.filter(t => t.hasFlaggedCosts).length;
     const tripsWithNoCosts = filteredTrips.filter(t => t.hasNoCosts).length;
     const tripsWithPendingCosts = filteredTrips.filter(t => t.hasPendingCosts).length;
-    const tripsNeedingAttention = filteredTrips.filter(t => t.hasFlaggedCosts || t.hasNoCosts || t.hasPendingCosts).length;
-    
+    const tripsWithNoBaseRevenue = filteredTrips.filter(t => !t.base_revenue || t.base_revenue === 0).length;
+    const tripsNeedingAttention = filteredTrips.filter(t => t.hasFlaggedCosts || t.hasNoCosts || t.hasPendingCosts || !t.base_revenue).length;
+
     return {
       totalTrips: filteredTrips.length,
       totalRevenue,
@@ -283,6 +287,7 @@ const CompletedTrips = ({ trips, onView, onRefresh, isLoading = false }: Complet
       tripsWithFlaggedCosts,
       tripsWithNoCosts,
       tripsWithPendingCosts,
+      tripsWithNoBaseRevenue,
       tripsNeedingAttention,
     };
   }, [filteredTrips]);
@@ -400,7 +405,7 @@ const CompletedTrips = ({ trips, onView, onRefresh, isLoading = false }: Complet
     <TooltipProvider>
       <div className="space-y-6">
         {/* Enhanced Header with Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
           {stats.tripsNeedingAttention > 0 && (
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -417,7 +422,20 @@ const CompletedTrips = ({ trips, onView, onRefresh, isLoading = false }: Complet
             </Card>
           )}
 
-          <Card className={stats.tripsNeedingAttention > 0 ? '' : 'md:col-span-2'}>
+          {stats.tripsWithNoBaseRevenue > 0 && (
+            <Card className="border-amber-200 bg-amber-50/30">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Missing Revenue</CardTitle>
+                <DollarSign className="h-4 w-4 text-amber-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-semibold text-amber-700">{stats.tripsWithNoBaseRevenue}</div>
+                <p className="text-xs text-amber-600 mt-1">completed trips need revenue</p>
+              </CardContent>
+            </Card>
+          )}
+
+          <Card className={stats.tripsNeedingAttention > 0 || stats.tripsWithNoBaseRevenue > 0 ? '' : 'md:col-span-2'}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Completed Trips</CardTitle>
               <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
@@ -467,6 +485,30 @@ const CompletedTrips = ({ trips, onView, onRefresh, isLoading = false }: Complet
           </Card>
         </div>
 
+        {/* Missing Base Revenue Banner Alert */}
+        {filteredTrips.filter(t => !t.base_revenue || t.base_revenue === 0).length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+            <div className="h-9 w-9 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+              <DollarSign className="w-4 h-4 text-amber-600" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-amber-800">Missing Base Revenue in Completed Trips</p>
+              <p className="text-sm text-amber-700 mt-0.5">
+                {filteredTrips.filter(t => !t.base_revenue || t.base_revenue === 0).length} completed trip(s) have no base revenue set.
+                Please update these trips to ensure accurate historical data and profit calculations.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowMissingRevenueOnly(true)}
+              className="bg-white border-amber-200 text-amber-700 hover:bg-amber-50"
+            >
+              View Missing Revenue
+            </Button>
+          </div>
+        )}
+
         {/* Premium Toolbar */}
         <div className="bg-card border rounded-xl shadow-sm overflow-hidden">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-4 bg-muted/30 border-b">
@@ -479,7 +521,7 @@ const CompletedTrips = ({ trips, onView, onRefresh, isLoading = false }: Complet
                 <p className="text-xs text-muted-foreground">View and manage historical trip data</p>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-2">
               <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as 'grouped' | 'list')} className="mr-2">
                 <TabsList className="h-9">
@@ -569,6 +611,15 @@ const CompletedTrips = ({ trips, onView, onRefresh, isLoading = false }: Complet
                   </SelectContent>
                 </Select>
 
+                <Button
+                  variant={showMissingRevenueOnly ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setShowMissingRevenueOnly(!showMissingRevenueOnly)}
+                  className={`h-10 gap-2 ${showMissingRevenueOnly ? 'bg-amber-500 hover:bg-amber-600 text-white' : ''}`}
+                >
+                  <DollarSign className="h-4 w-4" />
+                  {showMissingRevenueOnly ? 'Showing Missing Revenue' : 'Show Missing Revenue'}
+                </Button>
               </div>
             </div>
 
@@ -595,6 +646,12 @@ const CompletedTrips = ({ trips, onView, onRefresh, isLoading = false }: Complet
                       <Badge variant="secondary" className="text-xs gap-1">
                         <Building className="h-2.5 w-2.5" />
                         {clientFilter}
+                      </Badge>
+                    )}
+                    {showMissingRevenueOnly && (
+                      <Badge variant="secondary" className="text-xs gap-1 bg-amber-100 text-amber-700">
+                        <DollarSign className="h-2.5 w-2.5" />
+                        Missing Revenue
                       </Badge>
                     )}
                     {searchQuery && (
@@ -713,20 +770,18 @@ const CompletedTrips = ({ trips, onView, onRefresh, isLoading = false }: Complet
                   <CollapsibleTrigger asChild>
                     <div className="group flex items-center justify-between p-5 bg-card border rounded-xl hover:bg-accent/50 hover:border-emerald-500/30 transition-all duration-200 cursor-pointer shadow-sm">
                       <div className="flex items-center gap-5">
-                        <div className={`flex items-center justify-center w-12 h-12 rounded-xl transition-all duration-200 ${
-                          isCollapsed 
-                            ? 'bg-muted group-hover:bg-emerald-500/10' 
+                        <div className={`flex items-center justify-center w-12 h-12 rounded-xl transition-all duration-200 ${isCollapsed
+                            ? 'bg-muted group-hover:bg-emerald-500/10'
                             : 'bg-emerald-500/20'
-                        }`}>
+                          }`}>
                           {isCollapsed ? (
-                            <ChevronRight className={`h-5 w-5 transition-colors ${
-                              isCollapsed ? 'text-muted-foreground' : 'text-emerald-600'
-                            }`} />
+                            <ChevronRight className={`h-5 w-5 transition-colors ${isCollapsed ? 'text-muted-foreground' : 'text-emerald-600'
+                              }`} />
                           ) : (
                             <ChevronDown className="h-5 w-5 text-emerald-600" />
                           )}
                         </div>
-                        
+
                         {weekNumber && (
                           <div className="flex flex-col items-center justify-center w-16 h-16 bg-emerald-500/10 rounded-xl">
                             <span className="text-xs text-muted-foreground">Week</span>
@@ -827,16 +882,17 @@ const CompletedTrips = ({ trips, onView, onRefresh, isLoading = false }: Complet
                                           const isDuplicate = duplicatePods.includes(trip.trip_number);
                                           const hasEditHistory = trip.edit_history && trip.edit_history.length > 0;
                                           const needsAttention = trip.hasFlaggedCosts || trip.hasPendingCosts || trip.hasNoCosts;
+                                          const missingRevenue = !trip.base_revenue || trip.base_revenue === 0;
                                           const expenses = [...(trip.costs || []), ...(trip.additional_costs || [])].reduce((s, c) => s + (c.amount || 0), 0);
 
                                           return (
                                             <tr
                                               key={trip.id}
-                                              className={`group transition-colors cursor-pointer ${
-                                                isDuplicate ? 'bg-destructive/5 hover:bg-destructive/10' :
-                                                needsAttention ? 'bg-amber-50/40 hover:bg-amber-50/70' :
-                                                'hover:bg-muted/40'
-                                              }`}
+                                              className={`group transition-colors cursor-pointer ${isDuplicate ? 'bg-destructive/5 hover:bg-destructive/10' :
+                                                  missingRevenue ? 'bg-amber-50/40 hover:bg-amber-50/70' :
+                                                    needsAttention ? 'bg-amber-50/40 hover:bg-amber-50/70' :
+                                                      'hover:bg-muted/40'
+                                                }`}
                                               onClick={() => onView(trip)}
                                             >
                                               <td className="py-2.5 px-3">
@@ -853,6 +909,16 @@ const CompletedTrips = ({ trips, onView, onRefresh, isLoading = false }: Complet
                                               <td className="py-2.5 px-3">
                                                 <div className="flex items-center gap-1.5 min-w-0">
                                                   <span className="font-medium truncate max-w-[180px]">{trip.route || '—'}</span>
+                                                  {missingRevenue && (
+                                                    <Tooltip>
+                                                      <TooltipTrigger>
+                                                        <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-amber-700 bg-amber-100 rounded px-1 py-0.5 shrink-0">
+                                                          <DollarSign className="h-2.5 w-2.5" />No revenue
+                                                        </span>
+                                                      </TooltipTrigger>
+                                                      <TooltipContent><p>Base revenue not set</p></TooltipContent>
+                                                    </Tooltip>
+                                                  )}
                                                   {trip.hasFlaggedCosts && (
                                                     <Tooltip>
                                                       <TooltipTrigger>
@@ -873,7 +939,7 @@ const CompletedTrips = ({ trips, onView, onRefresh, isLoading = false }: Complet
                                                       <TooltipContent><p>{trip.pendingCostCount} cost{trip.pendingCostCount === 1 ? '' : 's'} pending</p></TooltipContent>
                                                     </Tooltip>
                                                   )}
-                                                  {trip.hasNoCosts && (
+                                                  {trip.hasNoCosts && !missingRevenue && (
                                                     <Tooltip>
                                                       <TooltipTrigger>
                                                         <span className="inline-flex items-center text-[10px] font-medium text-rose-700 bg-rose-100 rounded px-1 py-0.5 shrink-0">!</span>
@@ -894,11 +960,10 @@ const CompletedTrips = ({ trips, onView, onRefresh, isLoading = false }: Complet
                                                 <div className="flex items-center gap-1.5">
                                                   <span className="truncate">{trip.client_name || '—'}</span>
                                                   {trip.payment_status && (
-                                                    <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${
-                                                      trip.payment_status === 'paid' ? 'bg-emerald-500' :
-                                                      trip.payment_status === 'partial' ? 'bg-amber-500' :
-                                                      'bg-slate-400'
-                                                    }`} title={trip.payment_status === 'paid' ? 'Paid' : trip.payment_status === 'partial' ? 'Partial' : 'Unpaid'} />
+                                                    <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${trip.payment_status === 'paid' ? 'bg-emerald-500' :
+                                                        trip.payment_status === 'partial' ? 'bg-amber-500' :
+                                                          'bg-slate-400'
+                                                      }`} title={trip.payment_status === 'paid' ? 'Paid' : trip.payment_status === 'partial' ? 'Partial' : 'Unpaid'} />
                                                   )}
                                                 </div>
                                               </td>
@@ -906,21 +971,34 @@ const CompletedTrips = ({ trips, onView, onRefresh, isLoading = false }: Complet
                                                 {trip.arrival_date
                                                   ? format(parseISO(trip.arrival_date), 'dd MMM')
                                                   : trip.departure_date
-                                                  ? format(parseISO(trip.departure_date), 'dd MMM')
-                                                  : '—'}
+                                                    ? format(parseISO(trip.departure_date), 'dd MMM')
+                                                    : '—'}
                                               </td>
                                               <td className="py-2.5 px-3 text-right tabular-nums text-muted-foreground">
                                                 {trip.distance_km ? `${trip.distance_km.toLocaleString()}` : '—'}
                                               </td>
-                                              <td className="py-2.5 px-3 text-right tabular-nums font-medium text-emerald-600">
-                                                {formatCurrency(trip.base_revenue || 0, trip.revenue_currency)}
+                                              <td className="py-2.5 px-3 text-right tabular-nums font-medium">
+                                                {missingRevenue ? (
+                                                  <div className="flex items-center justify-end gap-1">
+                                                    <span className="text-amber-600">—</span>
+                                                    <Tooltip>
+                                                      <TooltipTrigger>
+                                                        <AlertTriangle className="h-3 w-3 text-amber-500" />
+                                                      </TooltipTrigger>
+                                                      <TooltipContent>
+                                                        <p>No base revenue set</p>
+                                                      </TooltipContent>
+                                                    </Tooltip>
+                                                  </div>
+                                                ) : (
+                                                  <span className="text-emerald-600">{formatCurrency(trip.base_revenue || 0, trip.revenue_currency)}</span>
+                                                )}
                                               </td>
                                               <td className="py-2.5 px-3 text-right tabular-nums font-medium text-rose-600">
                                                 {expenses > 0 ? formatCurrency(expenses) : '—'}
                                               </td>
-                                              <td className={`py-2.5 px-3 text-right tabular-nums font-semibold ${
-                                                profit?.amount && profit.amount >= 0 ? 'text-emerald-600' : 'text-rose-600'
-                                              }`}>
+                                              <td className={`py-2.5 px-3 text-right tabular-nums font-semibold ${profit?.amount && profit.amount >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                                                }`}>
                                                 {profit ? formatCurrency(profit.amount, profit.currency) : '—'}
                                               </td>
                                               <td className="py-2.5 px-2 text-center" onClick={(e) => e.stopPropagation()}>
@@ -997,15 +1075,16 @@ const CompletedTrips = ({ trips, onView, onRefresh, isLoading = false }: Complet
                     const profit = calculateProfit(trip);
                     const isDuplicate = duplicatePods.includes(trip.trip_number);
                     const needsAttention = trip.hasFlaggedCosts || trip.hasPendingCosts || trip.hasNoCosts;
+                    const missingRevenue = !trip.base_revenue || trip.base_revenue === 0;
                     const expenses = [...(trip.costs || []), ...(trip.additional_costs || [])].reduce((s, c) => s + (c.amount || 0), 0);
                     return (
                       <tr
                         key={trip.id}
-                        className={`group transition-colors cursor-pointer ${
-                          isDuplicate ? 'bg-destructive/5 hover:bg-destructive/10' :
-                          needsAttention ? 'bg-amber-50/40 hover:bg-amber-50/70' :
-                          'hover:bg-muted/40'
-                        }`}
+                        className={`group transition-colors cursor-pointer ${isDuplicate ? 'bg-destructive/5 hover:bg-destructive/10' :
+                            missingRevenue ? 'bg-amber-50/40 hover:bg-amber-50/70' :
+                              needsAttention ? 'bg-amber-50/40 hover:bg-amber-50/70' :
+                                'hover:bg-muted/40'
+                          }`}
                         onClick={() => onView(trip)}
                       >
                         <td className="py-2.5 px-3">
@@ -1022,22 +1101,26 @@ const CompletedTrips = ({ trips, onView, onRefresh, isLoading = false }: Complet
                           <div className="flex items-center gap-1.5">
                             <span className="truncate">{trip.client_name || '\u2014'}</span>
                             {trip.payment_status && (
-                              <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${
-                                trip.payment_status === 'paid' ? 'bg-emerald-500' :
-                                trip.payment_status === 'partial' ? 'bg-amber-500' : 'bg-slate-400'
-                              }`} title={trip.payment_status === 'paid' ? 'Paid' : trip.payment_status === 'partial' ? 'Partial' : 'Unpaid'} />
+                              <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${trip.payment_status === 'paid' ? 'bg-emerald-500' :
+                                  trip.payment_status === 'partial' ? 'bg-amber-500' : 'bg-slate-400'
+                                }`} title={trip.payment_status === 'paid' ? 'Paid' : trip.payment_status === 'partial' ? 'Partial' : 'Unpaid'} />
                             )}
                           </div>
                         </td>
                         <td className="py-2.5 px-3">
                           <div className="flex items-center gap-1.5 min-w-0">
                             <span className="truncate max-w-[150px]">{trip.route || '\u2014'}</span>
+                            {missingRevenue && (
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-amber-700 bg-amber-100 rounded px-1 py-0.5 shrink-0">
+                                <DollarSign className="h-2.5 w-2.5" />No revenue
+                              </span>
+                            )}
                             {trip.hasFlaggedCosts && (
                               <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-amber-700 bg-amber-100 rounded px-1 py-0.5 shrink-0">
                                 <AlertTriangle className="h-2.5 w-2.5" />{trip.flaggedCostCount}
                               </span>
                             )}
-                            {trip.hasNoCosts && (
+                            {trip.hasNoCosts && !missingRevenue && (
                               <span className="inline-flex items-center text-[10px] font-medium text-rose-700 bg-rose-100 rounded px-1 py-0.5 shrink-0">!</span>
                             )}
                           </div>
@@ -1046,21 +1129,34 @@ const CompletedTrips = ({ trips, onView, onRefresh, isLoading = false }: Complet
                           {trip.arrival_date
                             ? format(parseISO(trip.arrival_date), 'dd MMM')
                             : trip.departure_date
-                            ? format(parseISO(trip.departure_date), 'dd MMM')
-                            : '\u2014'}
+                              ? format(parseISO(trip.departure_date), 'dd MMM')
+                              : '\u2014'}
                         </td>
                         <td className="py-2.5 px-3 text-right tabular-nums text-muted-foreground">
                           {trip.distance_km ? `${trip.distance_km.toLocaleString()}` : '\u2014'}
                         </td>
-                        <td className="py-2.5 px-3 text-right tabular-nums font-medium text-emerald-600">
-                          {formatCurrency(trip.base_revenue || 0, trip.revenue_currency)}
+                        <td className="py-2.5 px-3 text-right tabular-nums font-medium">
+                          {missingRevenue ? (
+                            <div className="flex items-center justify-end gap-1">
+                              <span className="text-amber-600">—</span>
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <AlertTriangle className="h-3 w-3 text-amber-500" />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>No base revenue set</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </div>
+                          ) : (
+                            <span className="text-emerald-600">{formatCurrency(trip.base_revenue || 0, trip.revenue_currency)}</span>
+                          )}
                         </td>
                         <td className="py-2.5 px-3 text-right tabular-nums font-medium text-rose-600">
                           {expenses > 0 ? formatCurrency(expenses) : '\u2014'}
                         </td>
-                        <td className={`py-2.5 px-3 text-right tabular-nums font-semibold ${
-                          profit?.amount && profit.amount >= 0 ? 'text-emerald-600' : 'text-rose-600'
-                        }`}>
+                        <td className={`py-2.5 px-3 text-right tabular-nums font-semibold ${profit?.amount && profit.amount >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                          }`}>
                           {profit ? formatCurrency(profit.amount, profit.currency) : '\u2014'}
                         </td>
                         <td className="py-2.5 px-2 text-center" onClick={(e) => e.stopPropagation()}>
