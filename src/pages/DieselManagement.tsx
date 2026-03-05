@@ -1,4 +1,4 @@
-import DieselDebriefModal from '@/components/diesel/DieselDebriefModal';
+ import DieselDebriefModal from '@/components/diesel/DieselDebriefModal';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import DieselImportModal from '@/components/diesel/DieselImportModal';
 import DieselNormsModal from '@/components/diesel/DieselNormsModal';
@@ -1483,6 +1483,45 @@ const DieselManagement = () => {
       console.log(`Successfully debriefed ${batchData.recordIds.length} records`);
     } catch (error) {
       console.error('Batch debrief failed:', error);
+      throw error;
+    }
+  };
+
+  // Batch WhatsApp share handler
+  const handleBatchWhatsappShare = async (recordIds: string[], phoneNumber?: string) => {
+    try {
+      // Get the selected records
+      const selectedRecords = dieselRecords.filter(r => recordIds.includes(r.id));
+
+      // Calculate totals
+      const totalLitres = selectedRecords.reduce((sum, r) => sum + (r.litres_filled || 0), 0);
+      const totalCost = selectedRecords.reduce((sum, r) => sum + (r.total_cost || 0), 0);
+      const currency = selectedRecords[0]?.currency || 'ZAR';
+
+      // Build the WhatsApp message
+      const fleetDisplay = selectedFleetForBatch || 'All Fleets';
+      const message = `*Diesel Batch Debrief Summary*\n\n` +
+        `*Fleet:* ${fleetDisplay}\n` +
+        `*Records:* ${selectedRecords.length} selected\n` +
+        `*Total Litres:* ${totalLitres.toFixed(2)} L\n` +
+        `*Total Cost:* ${currency} ${totalCost.toFixed(2)}\n\n` +
+        `*Records to Debrief:*\n` +
+        selectedRecords.map(r =>
+          `- ${r.fleet_number || 'N/A'} | ${r.driver_name || 'N/A'} | ${r.litres_filled || 0} L | ${r.fuel_station || 'N/A'}`
+        ).join('\n') + '\n\n' +
+        `*Status:* Pending Debrief`;
+
+      // Open WhatsApp with the message
+      const encodedMessage = encodeURIComponent(message);
+      const phone = phoneNumber ? phoneNumber.replace(/\D/g, '') : ''; // Remove non-digits
+      const whatsappUrl = phone
+        ? `https://wa.me/${phone}?text=${encodedMessage}`
+        : `https://wa.me/?text=${encodedMessage}`;
+      window.open(whatsappUrl, '_blank');
+
+      console.log(`Shared ${recordIds.length} records via WhatsApp`);
+    } catch (error) {
+      console.error('Batch WhatsApp share failed:', error);
       throw error;
     }
   };
@@ -4425,6 +4464,7 @@ const DieselManagement = () => {
         }
         fleetNumber={selectedFleetForBatch || 'All Fleets'}
         onBatchDebrief={handleBatchDebrief}
+        onBatchWhatsappShare={handleBatchWhatsappShare}
       />
 
       <DieselNormsModal
