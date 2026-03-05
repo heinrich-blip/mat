@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import { useEffect, useState } from "react";
 
 type Status = "connected" | "connecting" | "offline";
 
@@ -25,34 +25,37 @@ export default function RealtimeStatusBadge() {
     };
   }, []);
 
+  /* Professional status colors */
   const dotColor =
-    status === "connected" ? "bg-green-500" :
-    status === "connecting" ? "bg-yellow-500" :
-    "bg-red-500";
+    status === "connected" ? "bg-emerald-500" :
+      status === "connecting" ? "bg-severity-medium" :
+        "bg-destructive";
 
   const label =
     status === "connected" ? "LIVE" :
-    status === "connecting" ? "Connecting…" :
-    "Offline";
+      status === "connecting" ? "Connecting…" :
+        "Offline";
 
   const secondsAgo = Math.floor((Date.now() - lastUpdate.getTime()) / 1000);
   const timeLabel = secondsAgo < 5 ? "just now" : `${secondsAgo}s ago`;
 
   return (
-    <div className="flex items-center gap-1.5 px-1 py-0.5">
+    <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-secondary/50 border border-border">
       <span
         className={cn(
           "w-2 h-2 rounded-full flex-shrink-0",
           dotColor,
-          status === "connected" && "animate-pulse-dot"
+          status === "connected" && "animate-pulse-subtle"
         )}
       />
-      <span className="text-xs text-muted-foreground">
+      <span className="text-xs font-medium text-foreground">
         {label}
-        {status === "connected" && (
-          <span className="text-muted-foreground/60 ml-1">{timeLabel}</span>
-        )}
       </span>
+      {status === "connected" && (
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {timeLabel}
+        </span>
+      )}
     </div>
   );
 }

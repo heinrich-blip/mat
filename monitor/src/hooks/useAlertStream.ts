@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import type { Alert, AlertFilters } from "@/types";
+import type { Alert } from "@/types";
 
 const SEVERITY_COLORS: Record<string, string> = {
   critical: "#ef4444",
@@ -12,14 +12,30 @@ const SEVERITY_COLORS: Record<string, string> = {
   info: "#6b7280",
 };
 
-export function useAlertStream(filters: AlertFilters) {
+const getToastOptions = (severity: string, color: string) => {
+  const base = {
+    duration: severity === "critical" ? 10_000 : severity === "high" ? 7_000 : 5_000,
+    style: { borderLeft: `4px solid ${color}` },
+  };
+
+  if (severity === "critical") {
+    return { ...base, variant: "error" as const };
+  }
+  if (severity === "high") {
+    return { ...base, variant: "warning" as const };
+  }
+  return { ...base, variant: "default" as const };
+};
+
+export function useAlertStream() {
   const queryClient = useQueryClient();
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   useEffect(() => {
-    // Clean up previous channel
+    // Cleanup any previous channel subscription
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
     }
 
     const channel = supabase
@@ -30,31 +46,24 @@ export function useAlertStream(filters: AlertFilters) {
         (payload) => {
           const newAlert = payload.new as Alert;
 
-          // Invalidate queries so the list refreshes
+          // Refresh related queries
           queryClient.invalidateQueries({ queryKey: ["alerts"] });
           queryClient.invalidateQueries({ queryKey: ["alert-counts"] });
 
-          // Show in-app toast notification
+          // Show toast notification
           const color = SEVERITY_COLORS[newAlert.severity] ?? "#6b7280";
-          const prefix = newAlert.severity.toUpperCase();
+          const { variant, duration, style } = getToastOptions(newAlert.severity, color);
 
-          if (newAlert.severity === "critical") {
-            toast.error(`[${prefix}] ${newAlert.title}`, {
-              description: `${newAlert.source_label ?? ""} • ${newAlert.message}`,
-              duration: 10_000,
-            });
-          } else if (newAlert.severity === "high") {
-            toast.warning(`[${prefix}] ${newAlert.title}`, {
-              description: `${newAlert.source_label ?? ""} • ${newAlert.message}`,
-              duration: 7_000,
-              style: { borderLeft: `4px solid ${color}` },
-            });
+          const message = `[${newAlert.severity.toUpperCase()}] ${newAlert.title}`;
+          const description = `${newAlert.source_label ?? ""} • ${newAlert.message}`;
+
+          // Use conditional rendering based on variant
+          if (variant === "error") {
+            toast.error(message, { description, duration, style });
+          } else if (variant === "warning") {
+            toast.warning(message, { description, duration, style });
           } else {
-            toast(`[${prefix}] ${newAlert.title}`, {
-              description: `${newAlert.source_label ?? ""} • ${newAlert.message}`,
-              duration: 5_000,
-              style: { borderLeft: `4px solid ${color}` },
-            });
+            toast(message, { description, duration, style });
           }
         }
       )
@@ -71,12 +80,13 @@ export function useAlertStream(filters: AlertFilters) {
     channelRef.current = channel;
 
     return () => {
-      supabase.removeChannel(channel);
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryClient]);
 
-  // Return realtime connection status
   return {
     isConnected: channelRef.current !== null,
   };

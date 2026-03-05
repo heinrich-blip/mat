@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 // Separator removed – no longer needed
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { ensureAlert } from '@/lib/alertUtils';
 import { addDays, format, getISOWeek, parseISO, startOfWeek } from 'date-fns';
 import {
   AlertTriangle,
@@ -32,13 +33,13 @@ import {
   RouteIcon,
   Search,
   Settings,
+  Trash2,
   Truck,
   Upload,
   User,
-  X,
-  Trash2
+  X
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import TripExportDialog from './TripExportDialog';
 
 // Helper function to get week key (Monday of the week)
@@ -252,8 +253,24 @@ const ActiveTrips = ({
     trips.forEach(t => {
       counts[t.trip_number] = (counts[t.trip_number] || 0) + 1;
     });
-    return Object.entries(counts).filter(([, count]) => count > 1).map(([pod]) => pod);
+    return Object.entries(counts).filter(([, count]) => count > 1).map(([pod, count]) => ({ pod, count }));
   }, [trips]);
+
+  useEffect(() => {
+    duplicatePods.forEach(async ({ pod, count }) => {
+      const duplicateTrips = trips.filter(t => t.trip_number === pod).map(t => t.id);
+      await ensureAlert({
+        sourceType: 'system',
+        sourceId: pod,
+        sourceLabel: `Duplicate POD ${pod}`,
+        category: 'duplicate_pod',
+        severity: 'medium',
+        title: 'Duplicate POD Detected in Active Trips',
+        message: `POD number ${pod} is used in ${count} active trips`,
+        metadata: { pod_number: pod, count, tripIds: duplicateTrips }
+      });
+    });
+  }, [duplicatePods, trips]);
 
   const handleDelete = (id: string) => {
     const trip = trips.find((t) => t.id === id);
@@ -699,8 +716,8 @@ const ActiveTrips = ({
                     <div className="group flex items-center justify-between p-5 bg-card border rounded-xl hover:bg-accent/50 hover:border-primary/30 transition-all duration-200 cursor-pointer shadow-sm">
                       <div className="flex items-center gap-5">
                         <div className={`flex items-center justify-center w-12 h-12 rounded-xl transition-all duration-200 ${isCollapsed
-                            ? 'bg-muted group-hover:bg-primary/10'
-                            : 'bg-primary/20'
+                          ? 'bg-muted group-hover:bg-primary/10'
+                          : 'bg-primary/20'
                           }`}>
                           {isCollapsed ? (
                             <ChevronRight className={`h-5 w-5 transition-colors ${isCollapsed ? 'text-muted-foreground' : 'text-primary'
@@ -808,7 +825,7 @@ const ActiveTrips = ({
                                       <tbody className="divide-y divide-border/50">
                                         {fleetTrips.map((trip) => {
                                           const profit = calculateProfit(trip);
-                                          const isDuplicate = duplicatePods.includes(trip.trip_number);
+                                          const isDuplicate = duplicatePods.some(d => d.pod === trip.trip_number);
                                           const needsAttention = trip.hasFlaggedCosts || trip.hasPendingCosts || trip.hasNoCosts;
                                           const missingRevenue = !trip.base_revenue || trip.base_revenue === 0;
                                           const expenses = [...(trip.costs || []), ...(trip.additional_costs || [])].reduce((s, c) => s + (c.amount || 0), 0);
@@ -817,9 +834,9 @@ const ActiveTrips = ({
                                             <tr
                                               key={trip.id}
                                               className={`group transition-colors cursor-pointer ${isDuplicate ? 'bg-destructive/5 hover:bg-destructive/10' :
-                                                  missingRevenue ? 'bg-amber-50/40 hover:bg-amber-50/70' :
-                                                    needsAttention ? 'bg-amber-50/40 hover:bg-amber-50/70' :
-                                                      'hover:bg-muted/40'
+                                                missingRevenue ? 'bg-amber-50/40 hover:bg-amber-50/70' :
+                                                  needsAttention ? 'bg-amber-50/40 hover:bg-amber-50/70' :
+                                                    'hover:bg-muted/40'
                                                 }`}
                                               onClick={() => onView(trip)}
                                             >
@@ -883,8 +900,8 @@ const ActiveTrips = ({
                                                   <span className="truncate">{trip.client_name || '—'}</span>
                                                   {trip.payment_status && (
                                                     <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${trip.payment_status === 'paid' ? 'bg-emerald-500' :
-                                                        trip.payment_status === 'partial' ? 'bg-amber-500' :
-                                                          'bg-slate-400'
+                                                      trip.payment_status === 'partial' ? 'bg-amber-500' :
+                                                        'bg-slate-400'
                                                       }`} title={trip.payment_status === 'paid' ? 'Paid' : trip.payment_status === 'partial' ? 'Partial' : 'Unpaid'} />
                                                   )}
                                                 </div>
@@ -987,7 +1004,7 @@ const ActiveTrips = ({
                 <tbody className="divide-y divide-border/50">
                   {filteredTrips.map((trip) => {
                     const profit = calculateProfit(trip);
-                    const isDuplicate = duplicatePods.includes(trip.trip_number);
+                    const isDuplicate = duplicatePods.some(d => d.pod === trip.trip_number);
                     const needsAttention = trip.hasFlaggedCosts || trip.hasPendingCosts || trip.hasNoCosts;
                     const missingRevenue = !trip.base_revenue || trip.base_revenue === 0;
                     const expenses = [...(trip.costs || []), ...(trip.additional_costs || [])].reduce((s, c) => s + (c.amount || 0), 0);
@@ -995,9 +1012,9 @@ const ActiveTrips = ({
                       <tr
                         key={trip.id}
                         className={`group transition-colors cursor-pointer ${isDuplicate ? 'bg-destructive/5 hover:bg-destructive/10' :
-                            missingRevenue ? 'bg-amber-50/40 hover:bg-amber-50/70' :
-                              needsAttention ? 'bg-amber-50/40 hover:bg-amber-50/70' :
-                                'hover:bg-muted/40'
+                          missingRevenue ? 'bg-amber-50/40 hover:bg-amber-50/70' :
+                            needsAttention ? 'bg-amber-50/40 hover:bg-amber-50/70' :
+                              'hover:bg-muted/40'
                           }`}
                         onClick={() => onView(trip)}
                       >
@@ -1016,7 +1033,7 @@ const ActiveTrips = ({
                             <span className="truncate">{trip.client_name || '—'}</span>
                             {trip.payment_status && (
                               <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${trip.payment_status === 'paid' ? 'bg-emerald-500' :
-                                  trip.payment_status === 'partial' ? 'bg-amber-500' : 'bg-slate-400'
+                                trip.payment_status === 'partial' ? 'bg-amber-500' : 'bg-slate-400'
                                 }`} title={trip.payment_status === 'paid' ? 'Paid' : trip.payment_status === 'partial' ? 'Partial' : 'Unpaid'} />
                             )}
                           </div>

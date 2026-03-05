@@ -1,8 +1,33 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
-import type { DriverDocument, DriverDocumentType } from "@/types/database";
 import { useQuery } from "@tanstack/react-query";
+
+// Define types locally
+export type DriverDocumentType =
+  | 'license'
+  | 'pdp'
+  | 'passport'
+  | 'medical'
+  | 'retest'
+  | 'defensive_driving';
+
+export interface DriverDocument {
+  id: string;
+  driver_id: string;
+  document_type: DriverDocumentType;
+  document_number?: string | null;
+  issuing_authority?: string | null;
+  issue_date?: string | null;
+  expiry_date: string | null;
+  document_url?: string | null;
+  verified: boolean;
+  verified_at?: string | null;
+  verified_by?: string | null;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
 export const DOCUMENT_TYPES: { value: DriverDocumentType; label: string; shortLabel: string }[] = [
   { value: "license", label: "Driver License", shortLabel: "License" },

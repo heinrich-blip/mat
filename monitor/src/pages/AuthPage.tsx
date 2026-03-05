@@ -1,10 +1,10 @@
-import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import { Auth } from "@supabase/auth-ui-react";
 import { ThemeSupa } from "@supabase/auth-ui-shared";
-import { Activity } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
+import { Shield } from "lucide-react";
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 
 export default function AuthPage() {
   const { session } = useAuth();
@@ -17,21 +17,23 @@ export default function AuthPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm space-y-6">
-        {/* Logo */}
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center">
-            <Activity className="h-6 w-6 text-white" />
+        {/* Professional Logo */}
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-14 h-14 bg-primary rounded-xl flex items-center justify-center shadow-card">
+            <Shield className="h-7 w-7 text-primary-foreground" />
           </div>
           <div className="text-center">
-            <h1 className="text-xl font-bold text-foreground">MAT Monitor</h1>
-            <p className="text-sm text-muted-foreground">
-              Alerts &amp; Analytics Dashboard
+            <h1 className="text-xl font-semibold text-foreground tracking-tight">
+              MAT Monitor
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Fleet Command Center
             </p>
           </div>
         </div>
 
         {/* Auth form */}
-        <div className="bg-card border border-border rounded-xl p-6">
+        <div className="bg-card border border-border rounded-xl p-6 shadow-card">
           <Auth
             supabaseClient={supabase}
             appearance={{
@@ -39,20 +41,20 @@ export default function AuthPage() {
               variables: {
                 default: {
                   colors: {
-                    brand: "hsl(210 100% 56%)",
-                    brandAccent: "hsl(210 100% 46%)",
-                    inputBackground: "hsl(222 47% 18%)",
-                    inputBorder: "hsl(222 47% 28%)",
-                    inputText: "hsl(213 31% 91%)",
-                    inputPlaceholder: "hsl(215 20% 50%)",
-                    messageText: "hsl(213 31% 91%)",
-                    anchorTextColor: "hsl(210 100% 70%)",
+                    brand: "hsl(222 47% 35%)",
+                    brandAccent: "hsl(222 47% 25%)",
+                    inputBackground: "hsl(0 0% 100%)",
+                    inputBorder: "hsl(220 13% 88%)",
+                    inputText: "hsl(222 47% 11%)",
+                    inputPlaceholder: "hsl(220 9% 60%)",
+                    messageText: "hsl(222 47% 11%)",
+                    anchorTextColor: "hsl(222 47% 35%)",
                   },
                 },
               },
               style: {
                 container: { background: "transparent" },
-                label: { color: "hsl(213 31% 75%)", fontSize: "13px" },
+                label: { color: "hsl(222 47% 11%)", fontSize: "13px", fontWeight: "500" },
                 button: {
                   borderRadius: "6px",
                   fontWeight: "600",

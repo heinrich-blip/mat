@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "generate-icons": "node scripts/generate-pwa-icons.js",
     "generate-mobile-icons": "node scripts/generate-mobile-icons.js",
-    "generate-all-icons": "node scripts/generate-pwa-icons.js && node scripts/generate-mobile-icons.js"
+    "generate-all-icons": "node scripts/generate-pwa-icons.js && node scripts/generate-mobile-icons.js",
+    "typecheck": "tsc --noEmit"
   },
   "engines": {
     "node": ">=18.0.0"

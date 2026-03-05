@@ -38,6 +38,7 @@ import { formatCurrency, formatDate, formatNumber } from '@/lib/formatters';
 import type { DieselConsumptionRecord, DieselNorms } from '@/types/operations';
 import { AlertCircle, BarChart3, Calendar, CalendarRange, CheckCircle, ChevronDown, ChevronRight, Download, Edit, Eye, FileSpreadsheet, FileText, Filter, Fuel, Link, MessageCircle, Plus, Settings, Snowflake, Trash2, Truck, Upload, User } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import BatchDebriefModal, { type BatchDebriefData } from '@/components/diesel/BatchDebriefModal';
 
 // Report data types
 interface DriverReport {
@@ -187,6 +188,10 @@ const DieselManagement = () => {
     updateDieselNorm,
     deleteDieselNorm,
   } = useOperations();
+
+  // Batch debrief state
+  const [isBatchDebriefOpen, setIsBatchDebriefOpen] = useState(false);
+  const [selectedFleetForBatch, setSelectedFleetForBatch] = useState<string>('');
 
   // Consolidated reefer diesel records hook (CRUD + records from reefer_diesel_records table)
   const { records: allReeferRecords, createRecordAsync, updateRecordAsync } = useReeferDieselRecords({});
@@ -1456,6 +1461,32 @@ const DieselManagement = () => {
     link.click();
   };
 
+  // Batch debrief handler
+  const handleBatchDebrief = async (batchData: BatchDebriefData) => {
+    try {
+      // Update each record in the batch
+      for (const recordId of batchData.recordIds) {
+        const record = dieselRecords.find(r => r.id === recordId);
+        if (record) {
+          const updatedRecord = {
+            ...record,
+            debrief_notes: batchData.debrief_notes,
+            debrief_signed: true,
+            debrief_signed_by: batchData.debrief_signed_by,
+            debrief_signed_at: batchData.debrief_signed_at,
+            debrief_date: batchData.debrief_date,
+          };
+          await updateDieselRecord(updatedRecord);
+        }
+      }
+
+      console.log(`Successfully debriefed ${batchData.recordIds.length} records`);
+    } catch (error) {
+      console.error('Batch debrief failed:', error);
+      throw error;
+    }
+  };
+
   // Handler functions
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleManualSave = async (record: any) => {
@@ -1702,7 +1733,7 @@ const DieselManagement = () => {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex gap-2">
-{/* Import Data button hidden
+            {/* Import Data button hidden
             <Button
               variant="outline"
               className="gap-2"
@@ -1828,7 +1859,7 @@ const DieselManagement = () => {
                 <Snowflake className="h-4 w-4" />
                 Add Reefer Entry
               </Button>
-{/* Import CSV button hidden
+              {/* Import CSV button hidden
               <Button
                 variant="outline"
                 className="gap-2"
@@ -2254,75 +2285,75 @@ const DieselManagement = () => {
                                                     const recordLph = (record as any).litres_per_hour as number | null;
                                                     const fleetLhr = reeferLhrMap.get(record.fleet_number);
                                                     return (
-                                                    <tr
-                                                      key={record.id}
-                                                      className={`hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors ${idx % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/50 dark:bg-slate-800/30'}`}
-                                                    >
-                                                      <td className="px-4 py-3 whitespace-nowrap">
-                                                        <span className="font-medium">{formatDate(record.date)}</span>
-                                                      </td>
-                                                      <td className="px-4 py-3">
-                                                        <div className="flex items-center gap-2">
-                                                          <User className="h-4 w-4 text-muted-foreground" />
-                                                          <span>{record.driver_name || <span className="text-muted-foreground italic">No driver</span>}</span>
-                                                        </div>
-                                                      </td>
-                                                      <td className="px-4 py-3">
-                                                        <div className="flex items-center gap-2">
-                                                          <Fuel className="h-4 w-4 text-muted-foreground" />
-                                                          <span>{record.fuel_station || <span className="text-muted-foreground italic">Unknown</span>}</span>
-                                                        </div>
-                                                      </td>
-                                                      <td className="px-4 py-3 text-right font-mono">
-                                                        <span className="font-semibold">{formatNumber(record.litres_filled)}</span>
-                                                        <span className="text-muted-foreground ml-1">L</span>
-                                                      </td>
-                                                      <td className="px-4 py-3 text-right font-mono">
-                                                        <span className="font-semibold">
-                                                          {formatCurrency(record.total_cost, (record.currency || 'ZAR') as 'ZAR' | 'USD')}
-                                                        </span>
-                                                      </td>
-                                                      <td className="px-4 py-3 text-right font-mono">
-                                                        {(recordLph ?? fleetLhr?.avgLitresPerHour) ? (
-                                                          <span className="font-semibold text-cyan-600">{(recordLph ?? fleetLhr?.avgLitresPerHour ?? 0).toFixed(2)}</span>
-                                                        ) : (
-                                                          <span className="text-muted-foreground italic text-xs">-</span>
-                                                        )}
-                                                      </td>
-                                                      <td className="px-4 py-3 text-center">
-                                                        <DropdownMenu>
-                                                          <DropdownMenuTrigger asChild>
-                                                            <Button variant="outline" size="sm" className="h-8 px-2">
-                                                              <Settings className="h-4 w-4 mr-1" />
-                                                              <ChevronDown className="h-3 w-3" />
-                                                            </Button>
-                                                          </DropdownMenuTrigger>
-                                                          <DropdownMenuContent align="end" className="w-48">
-                                                            <DropdownMenuItem onClick={() => openViewModal(record)}>
-                                                              <Eye className="h-4 w-4 mr-2" />
-                                                              View Details
-                                                            </DropdownMenuItem>
-                                                            <DropdownMenuItem onClick={() => openEditRecord(record)}>
-                                                              <Edit className="h-4 w-4 mr-2" />
-                                                              Edit Record
-                                                            </DropdownMenuItem>
-                                                            {!record.probe_verified && (
-                                                              <DropdownMenuItem onClick={() => openProbeVerification(record)}>
-                                                                <CheckCircle className="h-4 w-4 mr-2" />
-                                                                Verify Probe
+                                                      <tr
+                                                        key={record.id}
+                                                        className={`hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors ${idx % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/50 dark:bg-slate-800/30'}`}
+                                                      >
+                                                        <td className="px-4 py-3 whitespace-nowrap">
+                                                          <span className="font-medium">{formatDate(record.date)}</span>
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                          <div className="flex items-center gap-2">
+                                                            <User className="h-4 w-4 text-muted-foreground" />
+                                                            <span>{record.driver_name || <span className="text-muted-foreground italic">No driver</span>}</span>
+                                                          </div>
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                          <div className="flex items-center gap-2">
+                                                            <Fuel className="h-4 w-4 text-muted-foreground" />
+                                                            <span>{record.fuel_station || <span className="text-muted-foreground italic">Unknown</span>}</span>
+                                                          </div>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-right font-mono">
+                                                          <span className="font-semibold">{formatNumber(record.litres_filled)}</span>
+                                                          <span className="text-muted-foreground ml-1">L</span>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-right font-mono">
+                                                          <span className="font-semibold">
+                                                            {formatCurrency(record.total_cost, (record.currency || 'ZAR') as 'ZAR' | 'USD')}
+                                                          </span>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-right font-mono">
+                                                          {(recordLph ?? fleetLhr?.avgLitresPerHour) ? (
+                                                            <span className="font-semibold text-cyan-600">{(recordLph ?? fleetLhr?.avgLitresPerHour ?? 0).toFixed(2)}</span>
+                                                          ) : (
+                                                            <span className="text-muted-foreground italic text-xs">-</span>
+                                                          )}
+                                                        </td>
+                                                        <td className="px-4 py-3 text-center">
+                                                          <DropdownMenu>
+                                                            <DropdownMenuTrigger asChild>
+                                                              <Button variant="outline" size="sm" className="h-8 px-2">
+                                                                <Settings className="h-4 w-4 mr-1" />
+                                                                <ChevronDown className="h-3 w-3" />
+                                                              </Button>
+                                                            </DropdownMenuTrigger>
+                                                            <DropdownMenuContent align="end" className="w-48">
+                                                              <DropdownMenuItem onClick={() => openViewModal(record)}>
+                                                                <Eye className="h-4 w-4 mr-2" />
+                                                                View Details
                                                               </DropdownMenuItem>
-                                                            )}
-                                                            <DropdownMenuItem
-                                                              onClick={() => handleDeleteRecord(record.id)}
-                                                              className="text-destructive"
-                                                            >
-                                                              <Trash2 className="h-4 w-4 mr-2" />
-                                                              Delete Record
-                                                            </DropdownMenuItem>
-                                                          </DropdownMenuContent>
-                                                        </DropdownMenu>
-                                                      </td>
-                                                    </tr>
+                                                              <DropdownMenuItem onClick={() => openEditRecord(record)}>
+                                                                <Edit className="h-4 w-4 mr-2" />
+                                                                Edit Record
+                                                              </DropdownMenuItem>
+                                                              {!record.probe_verified && (
+                                                                <DropdownMenuItem onClick={() => openProbeVerification(record)}>
+                                                                  <CheckCircle className="h-4 w-4 mr-2" />
+                                                                  Verify Probe
+                                                                </DropdownMenuItem>
+                                                              )}
+                                                              <DropdownMenuItem
+                                                                onClick={() => handleDeleteRecord(record.id)}
+                                                                className="text-destructive"
+                                                              >
+                                                                <Trash2 className="h-4 w-4 mr-2" />
+                                                                Delete Record
+                                                              </DropdownMenuItem>
+                                                            </DropdownMenuContent>
+                                                          </DropdownMenu>
+                                                        </td>
+                                                      </tr>
                                                     );
                                                   })}
                                                 </tbody>
@@ -2420,17 +2451,41 @@ const DieselManagement = () => {
                         Grouped by fleet — records with fuel efficiency outside acceptable norms
                       </CardDescription>
                     </div>
-                    {recordsRequiringDebrief.length > 0 && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => exportDebriefTransactions('pending')}
-                        className="gap-2"
-                      >
-                        <FileSpreadsheet className="h-4 w-4" />
-                        Export Pending
-                      </Button>
-                    )}
+                    <div className="flex gap-2">
+                      {recordsRequiringDebrief.length > 0 && (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => exportDebriefTransactions('pending')}
+                            className="gap-2"
+                          >
+                            <FileSpreadsheet className="h-4 w-4" />
+                            Export Pending
+                          </Button>
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={() => {
+                              // Get unique fleets with pending records
+                              const fleets = [...new Set(recordsRequiringDebrief.map(r => r.fleet_number))];
+                              if (fleets.length === 1) {
+                                setSelectedFleetForBatch(fleets[0]);
+                                setIsBatchDebriefOpen(true);
+                              } else {
+                                // Open with all fleets
+                                setSelectedFleetForBatch('');
+                                setIsBatchDebriefOpen(true);
+                              }
+                            }}
+                            className="gap-2 bg-green-600 hover:bg-green-700 text-white"
+                          >
+                            <CheckCircle className="h-4 w-4" />
+                            Batch Debrief All
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -2486,7 +2541,22 @@ const DieselManagement = () => {
                                       </span>
                                     )}
                                   </div>
-                                  <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
+                                  <div className="flex items-center gap-2">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 px-2 text-xs border-green-500 text-green-600 hover:bg-green-50 dark:hover:bg-green-950"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedFleetForBatch(fleet);
+                                        setIsBatchDebriefOpen(true);
+                                      }}
+                                    >
+                                      <CheckCircle className="h-3 w-3 mr-1" />
+                                      Batch
+                                    </Button>
+                                    <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
+                                  </div>
                                 </button>
 
                                 {/* Expanded rows */}
@@ -2682,65 +2752,65 @@ const DieselManagement = () => {
                       </div>
                       <div className="flex items-center gap-3">
                         {/* Overall / Weekly toggle */}
-                      <div className="flex border border-border rounded-md overflow-hidden">
-                        <button
-                          type="button"
-                          onClick={() => setWeeklyView(false)}
-                          className={`px-3 py-1.5 text-sm font-medium transition-colors ${!weeklyView ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
-                        >
-                          Overall
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { setWeeklyView(true); setExpandedBreakdownWeeks(new Set()); }}
-                          className={`px-3 py-1.5 text-sm font-medium border-l border-border transition-colors ${weeklyView ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
-                        >
-                          Weekly
-                        </button>
+                        <div className="flex border border-border rounded-md overflow-hidden">
+                          <button
+                            type="button"
+                            onClick={() => setWeeklyView(false)}
+                            className={`px-3 py-1.5 text-sm font-medium transition-colors ${!weeklyView ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+                          >
+                            Overall
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setWeeklyView(true); setExpandedBreakdownWeeks(new Set()); }}
+                            className={`px-3 py-1.5 text-sm font-medium border-l border-border transition-colors ${weeklyView ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+                          >
+                            Weekly
+                          </button>
+                        </div>
+                        <Button onClick={() => setExportOpen(true)} className="gap-2">
+                          <Download className="h-4 w-4" />
+                          Export Reports
+                        </Button>
                       </div>
-                      <Button onClick={() => setExportOpen(true)} className="gap-2">
-                        <Download className="h-4 w-4" />
-                        Export Reports
-                      </Button>
                     </div>
-                  </div>
-                  {/* Report Period Filter */}
-                  <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3 pt-3 border-t border-border/40">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-muted-foreground shrink-0" />
-                      <Select value={reportPeriod} onValueChange={setReportPeriod}>
-                        <SelectTrigger className="w-[180px] h-9 text-sm">
-                          <SelectValue placeholder="Select period" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="1month">Last Month</SelectItem>
-                          <SelectItem value="3months">Last 3 Months</SelectItem>
-                          <SelectItem value="6months">Last 6 Months</SelectItem>
-                          <SelectItem value="1year">Last Year</SelectItem>
-                          <SelectItem value="all">All Time</SelectItem>
-                          <SelectItem value="custom">
-                            <span className="flex items-center gap-1.5">
-                              <CalendarRange className="w-3.5 h-3.5" />
-                              Custom Range
-                            </span>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {reportPeriod === 'custom' && (
+                    {/* Report Period Filter */}
+                    <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3 pt-3 border-t border-border/40">
                       <div className="flex items-center gap-2">
-                        <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground">From</Label>
-                          <Input type="date" value={reportDateFrom} onChange={(e) => setReportDateFrom(e.target.value)} max={reportDateTo} className="h-9 w-[160px] text-sm" />
-                        </div>
-                        <span className="text-muted-foreground mt-5">→</span>
-                        <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground">To</Label>
-                          <Input type="date" value={reportDateTo} onChange={(e) => setReportDateTo(e.target.value)} min={reportDateFrom} className="h-9 w-[160px] text-sm" />
-                        </div>
+                        <Calendar className="w-4 h-4 text-muted-foreground shrink-0" />
+                        <Select value={reportPeriod} onValueChange={setReportPeriod}>
+                          <SelectTrigger className="w-[180px] h-9 text-sm">
+                            <SelectValue placeholder="Select period" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1month">Last Month</SelectItem>
+                            <SelectItem value="3months">Last 3 Months</SelectItem>
+                            <SelectItem value="6months">Last 6 Months</SelectItem>
+                            <SelectItem value="1year">Last Year</SelectItem>
+                            <SelectItem value="all">All Time</SelectItem>
+                            <SelectItem value="custom">
+                              <span className="flex items-center gap-1.5">
+                                <CalendarRange className="w-3.5 h-3.5" />
+                                Custom Range
+                              </span>
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
-                    )}
-                  </div>
+                      {reportPeriod === 'custom' && (
+                        <div className="flex items-center gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">From</Label>
+                            <Input type="date" value={reportDateFrom} onChange={(e) => setReportDateFrom(e.target.value)} max={reportDateTo} className="h-9 w-[160px] text-sm" />
+                          </div>
+                          <span className="text-muted-foreground mt-5">→</span>
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">To</Label>
+                            <Input type="date" value={reportDateTo} onChange={(e) => setReportDateTo(e.target.value)} min={reportDateFrom} className="h-9 w-[160px] text-sm" />
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -4301,7 +4371,7 @@ const DieselManagement = () => {
         editRecord={selectedReeferEditRecord}
       />
 
-{/* DieselImportModal hidden
+      {/* DieselImportModal hidden
       <DieselImportModal
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
@@ -4340,6 +4410,21 @@ const DieselManagement = () => {
         dieselRecord={selectedRecord as unknown as any}
         onDebrief={handleDebrief}
         onWhatsappShared={handleWhatsappShared}
+      />
+
+      {/* Batch Debrief Modal */}
+      <BatchDebriefModal
+        isOpen={isBatchDebriefOpen}
+        onClose={() => {
+          setIsBatchDebriefOpen(false);
+          setSelectedFleetForBatch('');
+        }}
+        dieselRecords={selectedFleetForBatch
+          ? dieselRecords.filter(r => r.fleet_number === selectedFleetForBatch && !r.debrief_signed)
+          : dieselRecords.filter(r => !r.debrief_signed)
+        }
+        fleetNumber={selectedFleetForBatch || 'All Fleets'}
+        onBatchDebrief={handleBatchDebrief}
       />
 
       <DieselNormsModal
@@ -4440,10 +4525,10 @@ const DieselManagement = () => {
 
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider pt-1">Truck Fleet</p>
               {([
-                { key: 'truckByDriver',  label: 'By Driver' },
-                { key: 'truckByFleet',   label: 'By Fleet Number' },
+                { key: 'truckByDriver', label: 'By Driver' },
+                { key: 'truckByFleet', label: 'By Fleet Number' },
                 { key: 'truckByStation', label: 'By Fuel Station' },
-                { key: 'weekly',         label: 'Weekly Consumption' },
+                { key: 'weekly', label: 'Weekly Consumption' },
               ] as { key: keyof ExportSheetSelection; label: string }[]).map(({ key, label }) => (
                 <div key={key} className="flex items-center gap-2 ml-2">
                   <Checkbox id={`exp-${key}`} checked={!!exportSel[key]} onCheckedChange={() => toggleSheet(key)} />
@@ -4453,8 +4538,8 @@ const DieselManagement = () => {
 
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider pt-1">Reefer Fleet</p>
               {([
-                { key: 'reeferByFleet',   label: 'By Reefer Unit' },
-                { key: 'reeferByDriver',  label: 'By Driver' },
+                { key: 'reeferByFleet', label: 'By Reefer Unit' },
+                { key: 'reeferByDriver', label: 'By Driver' },
                 { key: 'reeferByStation', label: 'By Fuel Station' },
               ] as { key: keyof ExportSheetSelection; label: string }[]).map(({ key, label }) => (
                 <div key={key} className="flex items-center gap-2 ml-2">
@@ -4465,7 +4550,7 @@ const DieselManagement = () => {
 
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider pt-1">Raw Transaction Data</p>
               {([
-                { key: 'truckTransactions',  label: 'Truck Transactions' },
+                { key: 'truckTransactions', label: 'Truck Transactions' },
                 { key: 'reeferTransactions', label: 'Reefer Transactions' },
               ] as { key: keyof ExportSheetSelection; label: string }[]).map(({ key, label }) => (
                 <div key={key} className="flex items-center gap-2 ml-2">

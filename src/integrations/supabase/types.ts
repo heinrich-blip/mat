@@ -162,6 +162,89 @@ export type Database = {
           },
         ]
       }
+      alert_comments: {
+        Row: {
+          alert_id: string
+          comment: string
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          alert_id: string
+          comment: string
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          alert_id?: string
+          comment?: string
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alert_comments_alert_id_fkey"
+            columns: ["alert_id"]
+            isOneToOne: false
+            referencedRelation: "alerts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      alert_configurations: {
+        Row: {
+          category: string
+          conditions: Json
+          cooldown_minutes: number
+          created_at: string
+          created_by: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          notify_email: boolean
+          notify_in_app: boolean
+          notify_push: boolean
+          severity: string
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          conditions?: Json
+          cooldown_minutes?: number
+          created_at?: string
+          created_by: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          notify_email?: boolean
+          notify_in_app?: boolean
+          notify_push?: boolean
+          severity: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          conditions?: Json
+          cooldown_minutes?: number
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          notify_email?: boolean
+          notify_in_app?: boolean
+          notify_push?: boolean
+          severity?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       alert_notifications: {
         Row: {
           alert_id: string
@@ -211,6 +294,146 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      alert_subscriptions: {
+        Row: {
+          categories: string[] | null
+          created_at: string
+          device_label: string | null
+          id: string
+          is_active: boolean
+          last_seen_at: string
+          min_severity: string
+          push_subscription: Json
+          user_id: string
+        }
+        Insert: {
+          categories?: string[] | null
+          created_at?: string
+          device_label?: string | null
+          id?: string
+          is_active?: boolean
+          last_seen_at?: string
+          min_severity?: string
+          push_subscription: Json
+          user_id: string
+        }
+        Update: {
+          categories?: string[] | null
+          created_at?: string
+          device_label?: string | null
+          id?: string
+          is_active?: boolean
+          last_seen_at?: string
+          min_severity?: string
+          push_subscription?: Json
+          user_id?: string
+        }
+        Relationships: []
+      }
+      alerts: {
+        Row: {
+          acknowledged_at: string | null
+          acknowledged_by: string | null
+          category: string
+          config_id: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          message: string
+          metadata: Json
+          resolution_note: string | null
+          resolved_at: string | null
+          severity: string
+          source_id: string | null
+          source_label: string | null
+          source_type: string
+          status: string
+          title: string
+          triggered_at: string
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          category: string
+          config_id?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          message: string
+          metadata?: Json
+          resolution_note?: string | null
+          resolved_at?: string | null
+          severity: string
+          source_id?: string | null
+          source_label?: string | null
+          source_type: string
+          status?: string
+          title: string
+          triggered_at?: string
+        }
+        Update: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          category?: string
+          config_id?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          message?: string
+          metadata?: Json
+          resolution_note?: string | null
+          resolved_at?: string | null
+          severity?: string
+          source_id?: string | null
+          source_label?: string | null
+          source_type?: string
+          status?: string
+          title?: string
+          triggered_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alerts_config_id_fkey"
+            columns: ["config_id"]
+            isOneToOne: false
+            referencedRelation: "alert_configurations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      analytics_events: {
+        Row: {
+          created_at: string
+          dimensions: Json
+          event_type: string
+          id: string
+          metrics: Json
+          occurred_at: string
+          source_id: string | null
+          source_type: string
+        }
+        Insert: {
+          created_at?: string
+          dimensions?: Json
+          event_type: string
+          id?: string
+          metrics?: Json
+          occurred_at?: string
+          source_id?: string | null
+          source_type: string
+        }
+        Update: {
+          created_at?: string
+          dimensions?: Json
+          event_type?: string
+          id?: string
+          metrics?: Json
+          occurred_at?: string
+          source_id?: string | null
+          source_type?: string
+        }
+        Relationships: []
       }
       axle_configurations: {
         Row: {
@@ -1335,6 +1558,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      dashboard_kpi_snapshots: {
+        Row: {
+          created_at: string
+          dimensions: Json | null
+          id: string
+          kpi_name: string
+          period: string
+          snapshot_date: string
+          unit: string | null
+          value: number
+        }
+        Insert: {
+          created_at?: string
+          dimensions?: Json | null
+          id?: string
+          kpi_name: string
+          period: string
+          snapshot_date: string
+          unit?: string | null
+          value: number
+        }
+        Update: {
+          created_at?: string
+          dimensions?: Json | null
+          id?: string
+          kpi_name?: string
+          period?: string
+          snapshot_date?: string
+          unit?: string | null
+          value?: number
+        }
+        Relationships: []
       }
       delivery_costs: {
         Row: {
@@ -6368,6 +6624,42 @@ export type Database = {
           scheduled_date?: string | null
           status?: string | null
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      monitor_audit_log: {
+        Row: {
+          action: string
+          created_at: string | null
+          id: string
+          ip_address: unknown
+          metadata: Json | null
+          resource_id: string | null
+          resource_type: string | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          id?: string
+          ip_address?: unknown
+          metadata?: Json | null
+          resource_id?: string | null
+          resource_type?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          id?: string
+          ip_address?: unknown
+          metadata?: Json | null
+          resource_id?: string | null
+          resource_type?: string | null
+          user_agent?: string | null
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -11675,11 +11967,11 @@ export type Database = {
       }
       calculate_loading_duration: {
         Args: { p_load_id: string }
-        Returns: unknown
+        Returns: string
       }
       calculate_offloading_duration: {
         Args: { p_load_id: string }
-        Returns: unknown
+        Returns: string
       }
       calculate_performance_score: {
         Args: { p_load_id: string }
@@ -11717,7 +12009,7 @@ export type Database = {
           supplier_name: string
         }[]
       }
-      calculate_transit_time: { Args: { p_load_id: string }; Returns: unknown }
+      calculate_transit_time: { Args: { p_load_id: string }; Returns: string }
       cascade_driver_name_update: {
         Args: { p_new_name: string; p_old_name: string }
         Returns: undefined

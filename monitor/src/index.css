@@ -4,26 +4,56 @@
 
 @layer base {
   :root {
-    --background: 222 47% 11%;
-    --foreground: 213 31% 91%;
-    --card: 222 47% 14%;
-    --card-foreground: 213 31% 91%;
-    --popover: 222 47% 14%;
-    --popover-foreground: 213 31% 91%;
-    --primary: 210 100% 56%;
+    /* Professional Light Mode Palette */
+    --background: 220 14% 96%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    /* Professional navy/slate primary */
+    --primary: 222 47% 35%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 222 47% 20%;
-    --secondary-foreground: 213 31% 91%;
-    --muted: 222 47% 18%;
-    --muted-foreground: 215 20% 60%;
-    --accent: 222 47% 22%;
-    --accent-foreground: 213 31% 91%;
-    --destructive: 0 84% 60%;
+    --secondary: 220 14% 93%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 220 14% 93%;
+    --muted-foreground: 220 9% 46%;
+    --accent: 220 14% 93%;
+    --accent-foreground: 222 47% 11%;
+    /* Professional destructive red */
+    --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-    --border: 222 47% 22%;
-    --input: 222 47% 22%;
-    --ring: 210 100% 56%;
-    --radius: 0.5rem;
+    /* Subtle borders */
+    --border: 220 13% 88%;
+    --input: 220 13% 88%;
+    --ring: 222 47% 35%;
+    --radius: 0.375rem;
+  }
+
+  .dark {
+    /* Professional Dark Mode Palette */
+    --background: 222 47% 8%;
+    --foreground: 220 14% 96%;
+    --card: 222 47% 11%;
+    --card-foreground: 220 14% 96%;
+    --popover: 222 47% 11%;
+    --popover-foreground: 220 14% 96%;
+    /* Professional navy primary */
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 222 47% 16%;
+    --secondary-foreground: 220 14% 96%;
+    --muted: 222 47% 16%;
+    --muted-foreground: 220 9% 60%;
+    --accent: 222 47% 18%;
+    --accent-foreground: 220 14% 96%;
+    /* Professional destructive */
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    /* Subtle borders */
+    --border: 222 47% 18%;
+    --input: 222 47% 18%;
+    --ring: 217 91% 60%;
   }
 }
 
@@ -31,32 +61,88 @@
   * {
     @apply border-border;
   }
+
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
     font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Professional focus styles */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
   }
 }
 
-/* Scrollbar styling */
+/* Professional Scrollbar Styling */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
+
 ::-webkit-scrollbar-track {
-  @apply bg-muted;
-}
-::-webkit-scrollbar-thumb {
-  @apply bg-border rounded-full;
-}
-::-webkit-scrollbar-thumb:hover {
-  @apply bg-muted-foreground;
+  background: hsl(var(--muted));
 }
 
-/* Severity pulse animation for critical alerts */
-@keyframes severity-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-  50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 3px;
 }
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* Dark mode scrollbar */
+.dark ::-webkit-scrollbar-track {
+  background: hsl(var(--secondary));
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.4);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.6);
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.3) hsl(var(--muted));
+}
+
+.dark * {
+  scrollbar-color: hsl(var(--muted-foreground) / 0.4) hsl(var(--secondary));
+}
+
+/* Severity pulse animation for critical alerts - subtle professional version */
+@keyframes severity-pulse {
+
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 hsl(var(--destructive) / 0.15);
+  }
+
+  50% {
+    box-shadow: 0 0 0 3px hsl(var(--destructive) / 0.05);
+  }
+}
+
 .critical-pulse {
   animation: severity-pulse 2s ease-in-out infinite;
+}
+
+/* Professional selection colors */
+::selection {
+  background: hsl(var(--primary) / 0.2);
+  color: hsl(var(--primary));
+}
+
+/* Smooth transitions for interactive elements */
+button,
+a,
+input,
+select,
+textarea {
+  @apply transition-colors duration-150;
 }

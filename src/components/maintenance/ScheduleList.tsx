@@ -33,8 +33,12 @@ type SubcategoryFilter = FleetSubcategory | "all";
 export function ScheduleList({ schedules, onUpdate, showOverdueOnly }: ScheduleListProps) {
   const [selectedSchedule, setSelectedSchedule] = useState<MaintenanceSchedule | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [priorityFilter, setPriorityFilter] = useState("all");
-  const [subcategoryFilter, setSubcategoryFilter] = useState<SubcategoryFilter>("all");
+  // If you plan to add UI controls for these filters later, keep them.
+  // For now, if they're not used, you can either:
+  // Option 1: Remove them if you don't need filtering UI
+  // Option 2: Keep them with the unused variable warning suppressed
+  const [priorityFilter] = useState("all"); // Remove setter if not needed
+  const [subcategoryFilter] = useState<SubcategoryFilter>("all"); // Remove setter if not needed
   const { toast } = useToast();
 
   /* ---------------------------------------------
@@ -122,8 +126,8 @@ export function ScheduleList({ schedules, onUpdate, showOverdueOnly }: ScheduleL
             status = km.isOverdue
               ? "Overdue"
               : km.isApproaching
-              ? "Due Soon"
-              : "Scheduled";
+                ? "Due Soon"
+                : "Scheduled";
 
             label = km.isOverdue
               ? `${Math.abs(km.remainingKm).toLocaleString()} km overdue`
@@ -189,6 +193,34 @@ export function ScheduleList({ schedules, onUpdate, showOverdueOnly }: ScheduleL
           onChange={e => setSearchTerm(e.target.value)}
           className="max-w-xs"
         />
+
+        {/* If you plan to add filter UI controls later, uncomment this section */}
+        {/* <div className="flex gap-2">
+          <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+            <SelectTrigger className="w-[130px]">
+              <SelectValue placeholder="Priority" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Priorities</SelectItem>
+              <SelectItem value="high">High</SelectItem>
+              <SelectItem value="medium">Medium</SelectItem>
+              <SelectItem value="low">Low</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={subcategoryFilter} onValueChange={(value: SubcategoryFilter) => setSubcategoryFilter(value)}>
+            <SelectTrigger className="w-[130px]">
+              <SelectValue placeholder="Category" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Categories</SelectItem>
+              <SelectItem value="TRACTORS">Tractors</SelectItem>
+              <SelectItem value="TRAILERS">Trailers</SelectItem>
+              <SelectItem value="REEFERS">Reefers</SelectItem>
+              <SelectItem value="LIGHT_VEHICLES">Light Vehicles</SelectItem>
+            </SelectContent>
+          </Select>
+        </div> */}
 
         <div className="flex gap-2">
           <Button
@@ -272,8 +304,8 @@ export function ScheduleList({ schedules, onUpdate, showOverdueOnly }: ScheduleL
                           schedule.status === "Overdue"
                             ? "destructive"
                             : schedule.status === "Due Soon"
-                            ? "default"
-                            : "outline"
+                              ? "default"
+                              : "outline"
                         }
                       >
                         {schedule.status}

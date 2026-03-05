@@ -12,6 +12,8 @@ export type AlertCategory =
   | "trip_delay"
   | "load_exception"
   | "tyre_pressure"
+  | "duplicate_pod"
+  | "document_expiry"
   | "custom";
 
 export type AlertSourceType =
@@ -110,6 +112,8 @@ export interface AlertFilters {
   sourceTypes: AlertSourceType[];
   statuses: AlertStatus[];
   searchQuery: string;
+  selectedVehicle: string | null;      // Added
+  selectedFleets: string[];            // Added
 }
 
 export const DEFAULT_FILTERS: AlertFilters = {
@@ -121,6 +125,8 @@ export const DEFAULT_FILTERS: AlertFilters = {
   sourceTypes: [],
   statuses: ["active"],
   searchQuery: "",
+  selectedVehicle: null,               // Added
+  selectedFleets: [],                   // Added
 };
 
 // ─── User / Auth Types ────────────────────────────────────────────────────────

@@ -9,19 +9,20 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import
-  {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-  } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { supabase } from "@/integrations/supabase/client";
+import { ensureAlert } from '@/lib/alertUtils';
 import { useQuery } from "@tanstack/react-query";
+import { format, parseISO } from 'date-fns';
 import { Eye, Loader2, Pencil, Plus, Search, Trash2, Truck } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface Vehicle {
   id: string;
@@ -33,6 +34,7 @@ interface Vehicle {
   tonnage: number | null;
   engine_specs: string | null;
   active: boolean | null;
+  license_disk_expiry: string | null;
   created_at: string | null;
 }
 
@@ -75,6 +77,33 @@ const Vehicles = () => {
       return data || [];
     },
   });
+
+  // Generate alerts for expired license disks
+  useEffect(() => {
+    if (isLoading || !vehicles || vehicles.length === 0) return;
+    const today = new Date();
+    vehicles.forEach((v) => {
+      if (!v.license_disk_expiry) return;
+      const exp = parseISO(v.license_disk_expiry);
+      if (!isNaN(exp.getTime()) && exp < today) {
+        ensureAlert({
+          sourceType: 'vehicle',
+          sourceId: v.id,
+          sourceLabel: v.fleet_number || v.registration_number,
+          category: 'document_expiry',
+          severity: 'high',
+          title: 'Vehicle license disk expired',
+          message: `License disk expired on ${format(exp, 'yyyy-MM-dd')} for ${v.registration_number}`,
+          metadata: {
+            registration_number: v.registration_number,
+            fleet_number: v.fleet_number,
+            expiry_date: v.license_disk_expiry,
+            document: 'license_disk',
+          },
+        }).catch((e) => console.error('ensureAlert failed', e));
+      }
+    });
+  }, [isLoading, vehicles]);
 
   // Get unique vehicle types for filter
   const vehicleTypes = [...new Set(vehicles.map(v => v.vehicle_type).filter(Boolean))].sort();
@@ -211,69 +240,84 @@ const Vehicles = () => {
               </div>
             ) : (
               <div className="overflow-x-auto">
-              <Table className="min-w-[700px]">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Fleet #</TableHead>
-                    <TableHead>Registration</TableHead>
-                    <TableHead>Make & Model</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Tonnage</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {vehicles.map((vehicle) => (
-                    <TableRow key={vehicle.id}>
-                      <TableCell className="font-medium">
-                        {vehicle.fleet_number || "-"}
-                      </TableCell>
-                      <TableCell>{vehicle.registration_number}</TableCell>
-                      <TableCell>
-                        {vehicle.make} {vehicle.model}
-                      </TableCell>
-                      <TableCell>{getVehicleTypeBadge(vehicle.vehicle_type)}</TableCell>
-                      <TableCell>
-                        {vehicle.tonnage ? `${vehicle.tonnage}T` : "-"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={vehicle.active ? "default" : "secondary"}>
-                          {vehicle.active ? "Active" : "Inactive"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleViewDetails(vehicle)}
-                            title="View Details"
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleEdit(vehicle)}
-                            title="Edit"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDelete(vehicle)}
-                            title="Delete"
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </TableCell>
+                <Table className="min-w-[700px]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Fleet #</TableHead>
+                      <TableHead>Registration</TableHead>
+                      <TableHead>Make & Model</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Tonnage</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>License Disk</TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {vehicles.map((vehicle) => (
+                      <TableRow key={vehicle.id}>
+                        <TableCell className="font-medium">
+                          {vehicle.fleet_number || "-"}
+                        </TableCell>
+                        <TableCell>{vehicle.registration_number}</TableCell>
+                        <TableCell>
+                          {vehicle.make} {vehicle.model}
+                        </TableCell>
+                        <TableCell>{getVehicleTypeBadge(vehicle.vehicle_type)}</TableCell>
+                        <TableCell>
+                          {vehicle.tonnage ? `${vehicle.tonnage}T` : "-"}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={vehicle.active ? "default" : "secondary"}>
+                            {vehicle.active ? "Active" : "Inactive"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {vehicle.license_disk_expiry ? (
+                            <div className="flex items-center gap-2">
+                              <span className={parseISO(vehicle.license_disk_expiry) < new Date() ? 'text-destructive font-semibold' : ''}>
+                                {format(parseISO(vehicle.license_disk_expiry), 'yyyy-MM-dd')}
+                              </span>
+                              {parseISO(vehicle.license_disk_expiry) < new Date() && (
+                                <Badge variant="destructive">Expired</Badge>
+                              )}
+                            </div>
+                          ) : (
+                            "-"
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleViewDetails(vehicle)}
+                              title="View Details"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEdit(vehicle)}
+                              title="Edit"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDelete(vehicle)}
+                              title="Delete"
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
             )}
           </CardContent>

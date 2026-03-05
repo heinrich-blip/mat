@@ -1,34 +1,43 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { formatDistanceToNow, format } from "date-fns";
 import {
   ArrowLeft, Check, CheckCheck, MessageSquare, Send, Clock, AlertCircle,
-  Truck, User, Wrench, Fuel, MapPin, Server, Package,
+  Truck, User, Wrench, Fuel, MapPin, Server, Package, AlertTriangle,
+  DollarSign, ExternalLink,
 } from "lucide-react";
 import { useAlert, useAlertComments, useAcknowledgeAlert, useResolveAlert, useAddAlertComment } from "@/hooks/useAlerts";
 import { useAuth } from "@/contexts/AuthContext";
 import SeverityBadge from "@/components/alerts/SeverityBadge";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 const SOURCE_ICONS: Record<string, React.ElementType> = {
   vehicle: Truck, driver: User, maintenance: Wrench, fuel: Fuel,
   geofence: MapPin, system: Server, load: Package, tyre: AlertCircle,
   trip: MapPin, manual: AlertCircle,
+  // Trip alert categories
+  duplicate_pod: AlertTriangle,
+  load_exception: DollarSign,
+  trip_delay: Clock,
+  fuel_anomaly: Fuel,
 };
 
+// Simplified to standard, professional border accents
 const BORDER_COLORS: Record<string, string> = {
-  critical: "border-red-500",
-  high:     "border-orange-500",
-  medium:   "border-amber-500",
-  low:      "border-blue-500",
-  info:     "border-gray-500",
+  critical: "border-red-600",
+  high: "border-orange-500",
+  medium: "border-amber-500",
+  low: "border-blue-600",
+  info: "border-slate-400",
 };
 
 export default function AlertDetailPage() {
   const { id = "" } = useParams<{ id: string }>();
   const { user } = useAuth();
   const [commentText, setCommentText] = useState("");
+  const [vehicleDetails, setVehicleDetails] = useState<{ fleet_number?: string } | null>(null);
 
   const { data: alert, isLoading } = useAlert(id);
   const { data: comments = [] } = useAlertComments(id);
@@ -36,40 +45,76 @@ export default function AlertDetailPage() {
   const resolve = useResolveAlert();
   const addComment = useAddAlertComment();
 
+  useEffect(() => {
+    async function fetchVehicleDetails() {
+      const vehicleId = alert?.metadata?.vehicle_id as string | undefined;
+      if (vehicleId) {
+        const { data } = await supabase
+          .from('vehicles')
+          .select('fleet_number')
+          .eq('id', vehicleId)
+          .single();
+
+        if (data) {
+          setVehicleDetails(data);
+        }
+      }
+    }
+    fetchVehicleDetails();
+  }, [alert?.metadata]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   if (!alert) {
     return (
-      <div className="p-6 text-center text-muted-foreground">
-        Alert not found.{" "}
-        <Link to="/alerts" className="text-primary hover:underline">Back to feed</Link>
+      <div className="p-8 text-center text-muted-foreground text-sm">
+        Alert record could not be located.{" "}
+        <Link to="/alerts" className="text-primary hover:underline font-medium">Return to Alert Feed</Link>
       </div>
     );
   }
 
-  const SourceIcon = SOURCE_ICONS[alert.source_type] ?? AlertCircle;
+  const metadata = alert.metadata as {
+    trip_id?: string;
+    trip_number?: string;
+    fleet_number?: string;
+    driver_name?: string;
+    client_name?: string;
+    issue_type?: string;
+    duplicate_count?: number;
+    flagged_count?: number;
+    days_in_progress?: number;
+    payment_status?: string;
+    vehicle_id?: string;
+    [key: string]: unknown;
+  };
+
+  const isTripAlert = ['duplicate_pod', 'load_exception', 'trip_delay', 'fuel_anomaly'].includes(alert.category);
+  const SourceIcon = SOURCE_ICONS[isTripAlert ? alert.category : alert.source_type] ?? AlertCircle;
   const isActive = alert.status === "active";
   const isAcknowledged = alert.status === "acknowledged";
+
+  const displayFleetNumber = vehicleDetails?.fleet_number || metadata.fleet_number || 'N/A';
 
   const handleAcknowledge = async () => {
     if (!user) return;
     try {
       await acknowledge.mutateAsync({ alertId: alert.id, userId: user.id });
-      toast.success("Alert acknowledged");
-    } catch { toast.error("Failed"); }
+      toast.success("Alert officially acknowledged.");
+    } catch { toast.error("Failed to acknowledge alert."); }
   };
 
   const handleResolve = async () => {
     try {
       await resolve.mutateAsync({ alertId: alert.id });
-      toast.success("Alert resolved");
-    } catch { toast.error("Failed"); }
+      toast.success("Alert marked as resolved.");
+    } catch { toast.error("Failed to resolve alert."); }
   };
 
   const handleComment = async () => {
@@ -77,175 +122,272 @@ export default function AlertDetailPage() {
     try {
       await addComment.mutateAsync({ alertId: alert.id, userId: user.id, comment: commentText.trim() });
       setCommentText("");
-    } catch { toast.error("Failed to post comment"); }
+    } catch { toast.error("Failed to post comment."); }
   };
 
-  const metaEntries = Object.entries(alert.metadata ?? {});
+  const handleViewTrip = () => {
+    if (metadata?.trip_id) {
+      window.open(`/trips/${metadata.trip_id}`, '_blank');
+    }
+  };
+
+  const metaEntries = Object.entries(alert.metadata ?? {}).filter(
+    ([key]) => !["trip_id", "trip_number", "fleet_number", "driver_name", "client_name", "issue_type", "vehicle_id"].includes(key)
+  );
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="max-w-3xl mx-auto p-6 space-y-6">
-        {/* Back link */}
+    <div className="h-full overflow-y-auto bg-muted/10 pb-10">
+      <div className="max-w-4xl mx-auto p-6 space-y-6">
+        {/* Navigation */}
         <Link
           to="/alerts"
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground font-medium transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
-          Back to Alert Feed
+          Back to Alerts
         </Link>
 
-        {/* Alert header card */}
-        <div className={cn("bg-card border border-border border-l-4 rounded-xl p-6 space-y-4", BORDER_COLORS[alert.severity] ?? "border-l-gray-500")}>
-          <div className="flex items-start gap-4">
-            <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center flex-shrink-0">
-              <SourceIcon className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap mb-2">
-                <SeverityBadge severity={alert.severity} size="md" dot />
-                <span className={cn(
-                  "text-xs font-semibold px-2.5 py-1 rounded-full border",
-                  alert.status === "active"        ? "bg-red-500/10 text-red-400 border-red-500/20" :
-                  alert.status === "acknowledged"   ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
-                  alert.status === "resolved"       ? "bg-green-500/10 text-green-400 border-green-500/20" :
-                  "bg-gray-500/10 text-gray-400 border-gray-500/20"
-                )}>
-                  {alert.status.toUpperCase()}
-                </span>
+        {/* Primary Header Card */}
+        <div className="bg-card border border-border shadow-sm rounded-md overflow-hidden">
+          <div className={cn("h-1 w-full", BORDER_COLORS[alert.severity] ?? "bg-slate-400")} />
+          <div className="p-6">
+            <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
+              <div className="flex gap-4">
+                <div className="w-10 h-10 rounded-md border border-border bg-muted/50 flex items-center justify-center flex-shrink-0">
+                  <SourceIcon className="h-5 w-5 text-foreground" strokeWidth={1.5} />
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-3">
+                    <SeverityBadge severity={alert.severity} size="sm" />
+                    <span className={cn(
+                      "text-[11px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-sm border",
+                      alert.status === "active" ? "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/50 dark:text-red-400 dark:border-red-900" :
+                        alert.status === "acknowledged" ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/50 dark:text-blue-400 dark:border-blue-900" :
+                          alert.status === "resolved" ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-900" :
+                            "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-900 dark:text-slate-400 dark:border-slate-800"
+                    )}>
+                      {alert.status}
+                    </span>
+                  </div>
+                  <h2 className="text-xl font-semibold text-foreground tracking-tight">{alert.title}</h2>
+                  {alert.source_label && (
+                    <p className="text-sm font-medium text-muted-foreground">{alert.source_label}</p>
+                  )}
+                  <p className="text-sm text-foreground/80 max-w-2xl leading-relaxed">{alert.message}</p>
+                </div>
               </div>
-              <h2 className="text-lg font-bold text-foreground">{alert.title}</h2>
-              {alert.source_label && (
-                <p className="text-sm text-primary mt-1">{alert.source_label}</p>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-3 shrink-0">
+                {isActive && (
+                  <button
+                    onClick={handleAcknowledge}
+                    disabled={acknowledge.isPending}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-border bg-background hover:bg-muted text-foreground transition-colors text-sm font-medium disabled:opacity-50"
+                  >
+                    <Check className="h-4 w-4" /> Acknowledge
+                  </button>
+                )}
+                {(isActive || isAcknowledged) && (
+                  <button
+                    onClick={handleResolve}
+                    disabled={resolve.isPending}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium disabled:opacity-50 shadow-sm"
+                  >
+                    <CheckCheck className="h-4 w-4" /> Mark Resolved
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Timeline Row */}
+            <div className="flex flex-wrap gap-6 text-[13px] text-muted-foreground border-t border-border mt-6 pt-4">
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <span className="font-medium text-foreground">Triggered:</span>
+                {format(new Date(alert.triggered_at), "MMM d, yyyy HH:mm")}
+              </div>
+              {alert.acknowledged_at && (
+                <div className="flex items-center gap-2">
+                  <Check className="h-4 w-4 text-muted-foreground" />
+                  <span className="font-medium text-foreground">Acknowledged:</span>
+                  {format(new Date(alert.acknowledged_at), "MMM d, yyyy HH:mm")}
+                </div>
               )}
-              <p className="text-sm text-muted-foreground mt-2">{alert.message}</p>
+              {alert.resolved_at && (
+                <div className="flex items-center gap-2">
+                  <CheckCheck className="h-4 w-4 text-muted-foreground" />
+                  <span className="font-medium text-foreground">Resolved:</span>
+                  {format(new Date(alert.resolved_at), "MMM d, yyyy HH:mm")}
+                </div>
+              )}
             </div>
-          </div>
-
-          {/* Timeline */}
-          <div className="flex flex-wrap gap-4 text-xs text-muted-foreground border-t border-border pt-4">
-            <div className="flex items-center gap-1.5">
-              <Clock className="h-3.5 w-3.5" />
-              <span>Triggered: {format(new Date(alert.triggered_at), "PPpp")}</span>
-            </div>
-            {alert.acknowledged_at && (
-              <div className="flex items-center gap-1.5">
-                <Check className="h-3.5 w-3.5 text-blue-400" />
-                <span>Acknowledged: {format(new Date(alert.acknowledged_at), "PPpp")}</span>
-              </div>
-            )}
-            {alert.resolved_at && (
-              <div className="flex items-center gap-1.5">
-                <CheckCheck className="h-3.5 w-3.5 text-green-400" />
-                <span>Resolved: {format(new Date(alert.resolved_at), "PPpp")}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Actions */}
-          <div className="flex items-center gap-2 pt-2">
-            {isActive && (
-              <button
-                onClick={handleAcknowledge}
-                disabled={acknowledge.isPending}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors text-sm font-medium disabled:opacity-50"
-              >
-                <Check className="h-4 w-4" /> Acknowledge
-              </button>
-            )}
-            {(isActive || isAcknowledged) && (
-              <button
-                onClick={handleResolve}
-                disabled={resolve.isPending}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors text-sm font-medium disabled:opacity-50"
-              >
-                <CheckCheck className="h-4 w-4" /> Resolve
-              </button>
-            )}
           </div>
         </div>
 
-        {/* Metadata */}
-        {metaEntries.length > 0 && (
-          <div className="bg-card border border-border rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-foreground mb-3">Alert Details</h3>
-            <dl className="grid grid-cols-2 gap-x-6 gap-y-3">
-              {metaEntries.map(([key, value]) => (
-                <div key={key}>
-                  <dt className="text-[11px] text-muted-foreground uppercase tracking-wider mb-0.5">
-                    {key.replace(/_/g, " ")}
-                  </dt>
-                  <dd className="text-sm text-foreground font-medium">{String(value)}</dd>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Main Details Panel */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Trip Info Panel */}
+            {isTripAlert && metadata?.trip_number && (
+              <div className="bg-card border border-border rounded-md shadow-sm p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    <Truck className="h-4 w-4 text-muted-foreground" />
+                    Trip Context
+                  </h3>
+                  {metadata.trip_id && (
+                    <button
+                      onClick={handleViewTrip}
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      View Full Trip
+                    </button>
+                  )}
                 </div>
-              ))}
-              <div>
-                <dt className="text-[11px] text-muted-foreground uppercase tracking-wider mb-0.5">Category</dt>
-                <dd className="text-sm text-foreground font-medium">{alert.category.replace(/_/g, " ")}</dd>
-              </div>
-              <div>
-                <dt className="text-[11px] text-muted-foreground uppercase tracking-wider mb-0.5">Source Type</dt>
-                <dd className="text-sm text-foreground font-medium">{alert.source_type}</dd>
-              </div>
-            </dl>
-            {alert.resolution_note && (
-              <div className="mt-3 pt-3 border-t border-border">
-                <dt className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">Resolution Note</dt>
-                <dd className="text-sm text-foreground">{alert.resolution_note}</dd>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 p-4 bg-muted/30 border border-border rounded-md">
+                  <div className="space-y-1">
+                    <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">Trip No.</p>
+                    <p className="text-sm font-medium text-foreground">{metadata.trip_number}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">Fleet ID</p>
+                    <p className="text-sm font-medium text-foreground">{displayFleetNumber}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">Driver</p>
+                    <p className="text-sm font-medium text-foreground">{metadata.driver_name || "Unassigned"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">Client</p>
+                    <p className="text-sm font-medium text-foreground">{metadata.client_name || "N/A"}</p>
+                  </div>
+                </div>
               </div>
             )}
-          </div>
-        )}
 
-        {/* Comments */}
-        <div className="bg-card border border-border rounded-xl p-5">
-          <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
-            <MessageSquare className="h-4 w-4" />
-            Comments ({comments.length})
-          </h3>
+            {/* General Metadata Panel */}
+            <div className="bg-card border border-border rounded-md shadow-sm p-6">
+              <h3 className="text-sm font-semibold text-foreground mb-4">Alert Details</h3>
 
-          {comments.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">No comments yet.</p>
-          ) : (
-            <div className="space-y-3 mb-4">
-              {comments.map((comment) => (
-                <div key={comment.id} className="flex gap-3">
-                  <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-                    <span className="text-xs font-bold text-primary uppercase">
-                      {(comment.user_id ?? "U").charAt(0)}
-                    </span>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-6 gap-x-4">
+                <div className="space-y-1">
+                  <dt className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">Category</dt>
+                  <dd className="text-sm text-foreground font-medium capitalize">{alert.category.replace(/_/g, " ")}</dd>
+                </div>
+                <div className="space-y-1">
+                  <dt className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">Source Type</dt>
+                  <dd className="text-sm text-foreground font-medium capitalize">{alert.source_type}</dd>
+                </div>
+
+                {metadata.duplicate_count !== undefined && (
+                  <div className="space-y-1">
+                    <dt className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">Duplicate Count</dt>
+                    <dd className="text-sm font-medium text-foreground">{metadata.duplicate_count}</dd>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-medium text-foreground">
-                        {comment.profile?.full_name ?? "User"}
-                      </span>
-                      <span className="text-[11px] text-muted-foreground">
-                        {formatDistanceToNow(new Date(comment.created_at), { addSuffix: true })}
+                )}
+                {metadata.days_in_progress !== undefined && (
+                  <div className="space-y-1">
+                    <dt className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">Days In Progress</dt>
+                    <dd className="text-sm font-medium text-foreground">{metadata.days_in_progress}</dd>
+                  </div>
+                )}
+                {metadata.flagged_count !== undefined && (
+                  <div className="space-y-1">
+                    <dt className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">Flagged Costs</dt>
+                    <dd className="text-sm font-medium text-foreground">{metadata.flagged_count}</dd>
+                  </div>
+                )}
+                {metadata.payment_status && (
+                  <div className="space-y-1">
+                    <dt className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">Payment Status</dt>
+                    <dd className="text-sm font-medium text-foreground capitalize">{metadata.payment_status}</dd>
+                  </div>
+                )}
+
+                {metaEntries.map(([key, value]) => (
+                  <div key={key} className="space-y-1">
+                    <dt className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">
+                      {key.replace(/_/g, " ")}
+                    </dt>
+                    <dd className="text-sm text-foreground font-medium">{String(value)}</dd>
+                  </div>
+                ))}
+              </div>
+
+              {alert.resolution_note && (
+                <div className="mt-6 pt-4 border-t border-border">
+                  <dt className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold mb-1.5">Resolution Note</dt>
+                  <dd className="text-sm text-foreground bg-muted/30 p-3 rounded-md border border-border">
+                    {alert.resolution_note}
+                  </dd>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Activity Sidebar */}
+          <div className="bg-card border border-border rounded-md shadow-sm flex flex-col h-[500px]">
+            <div className="p-4 border-b border-border">
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                Activity & Notes ({comments.length})
+              </h3>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {comments.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center space-y-2">
+                  <MessageSquare className="h-8 w-8 text-muted/50" />
+                  <p className="text-sm text-muted-foreground">No notes recorded.</p>
+                </div>
+              ) : (
+                comments.map((comment) => (
+                  <div key={comment.id} className="flex gap-3">
+                    <div className="w-8 h-8 rounded-md bg-muted border border-border flex items-center justify-center flex-shrink-0">
+                      <span className="text-xs font-semibold text-foreground uppercase">
+                        {(comment.profile?.full_name ?? "U").charAt(0)}
                       </span>
                     </div>
-                    <p className="text-sm text-muted-foreground">{comment.comment}</p>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline justify-between gap-2 mb-0.5">
+                        <span className="text-[13px] font-semibold text-foreground">
+                          {comment.profile?.full_name ?? "System User"}
+                        </span>
+                        <span className="text-[11px] text-muted-foreground shrink-0">
+                          {formatDistanceToNow(new Date(comment.created_at), { addSuffix: true })}
+                        </span>
+                      </div>
+                      <p className="text-[13px] text-foreground/80 leading-relaxed bg-muted/30 p-2.5 rounded-md border border-border mt-1">
+                        {comment.comment}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
-          )}
 
-          {/* Comment input */}
-          <div className="flex gap-2 mt-4 pt-4 border-t border-border">
-            <input
-              type="text"
-              value={commentText}
-              onChange={(e) => setCommentText(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleComment()}
-              placeholder="Add a comment…"
-              className="flex-1 bg-muted border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-            />
-            <button
-              onClick={handleComment}
-              disabled={!commentText.trim() || addComment.isPending}
-              className="px-3 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
-            >
-              <Send className="h-4 w-4" />
-            </button>
+            <div className="p-4 border-t border-border bg-muted/10">
+              <div className="relative">
+                <input
+                  type="text"
+                  value={commentText}
+                  onChange={(e) => setCommentText(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleComment()}
+                  placeholder="Add a resolution note or comment..."
+                  className="w-full bg-background border border-border rounded-md pl-3 pr-10 py-2.5 text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm"
+                />
+                <button
+                  onClick={handleComment}
+                  disabled={!commentText.trim() || addComment.isPending}
+                  className="absolute right-1.5 top-1.5 bottom-1.5 px-2 bg-primary text-primary-foreground rounded block hover:bg-primary/90 transition-colors disabled:opacity-50"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>

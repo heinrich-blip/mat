@@ -162,6 +162,89 @@ export type Database = {
           },
         ]
       }
+      alert_comments: {
+        Row: {
+          alert_id: string
+          comment: string
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          alert_id: string
+          comment: string
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          alert_id?: string
+          comment?: string
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alert_comments_alert_id_fkey"
+            columns: ["alert_id"]
+            isOneToOne: false
+            referencedRelation: "alerts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      alert_configurations: {
+        Row: {
+          category: string
+          conditions: Json
+          cooldown_minutes: number
+          created_at: string
+          created_by: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          notify_email: boolean
+          notify_in_app: boolean
+          notify_push: boolean
+          severity: string
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          conditions?: Json
+          cooldown_minutes?: number
+          created_at?: string
+          created_by: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          notify_email?: boolean
+          notify_in_app?: boolean
+          notify_push?: boolean
+          severity: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          conditions?: Json
+          cooldown_minutes?: number
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          notify_email?: boolean
+          notify_in_app?: boolean
+          notify_push?: boolean
+          severity?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       alert_notifications: {
         Row: {
           alert_id: string
@@ -211,6 +294,146 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      alert_subscriptions: {
+        Row: {
+          categories: string[] | null
+          created_at: string
+          device_label: string | null
+          id: string
+          is_active: boolean
+          last_seen_at: string
+          min_severity: string
+          push_subscription: Json
+          user_id: string
+        }
+        Insert: {
+          categories?: string[] | null
+          created_at?: string
+          device_label?: string | null
+          id?: string
+          is_active?: boolean
+          last_seen_at?: string
+          min_severity?: string
+          push_subscription: Json
+          user_id: string
+        }
+        Update: {
+          categories?: string[] | null
+          created_at?: string
+          device_label?: string | null
+          id?: string
+          is_active?: boolean
+          last_seen_at?: string
+          min_severity?: string
+          push_subscription?: Json
+          user_id?: string
+        }
+        Relationships: []
+      }
+      alerts: {
+        Row: {
+          acknowledged_at: string | null
+          acknowledged_by: string | null
+          category: string
+          config_id: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          message: string
+          metadata: Json
+          resolution_note: string | null
+          resolved_at: string | null
+          severity: string
+          source_id: string | null
+          source_label: string | null
+          source_type: string
+          status: string
+          title: string
+          triggered_at: string
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          category: string
+          config_id?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          message: string
+          metadata?: Json
+          resolution_note?: string | null
+          resolved_at?: string | null
+          severity: string
+          source_id?: string | null
+          source_label?: string | null
+          source_type: string
+          status?: string
+          title: string
+          triggered_at?: string
+        }
+        Update: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          category?: string
+          config_id?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          message?: string
+          metadata?: Json
+          resolution_note?: string | null
+          resolved_at?: string | null
+          severity?: string
+          source_id?: string | null
+          source_label?: string | null
+          source_type?: string
+          status?: string
+          title?: string
+          triggered_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alerts_config_id_fkey"
+            columns: ["config_id"]
+            isOneToOne: false
+            referencedRelation: "alert_configurations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      analytics_events: {
+        Row: {
+          created_at: string
+          dimensions: Json
+          event_type: string
+          id: string
+          metrics: Json
+          occurred_at: string
+          source_id: string | null
+          source_type: string
+        }
+        Insert: {
+          created_at?: string
+          dimensions?: Json
+          event_type: string
+          id?: string
+          metrics?: Json
+          occurred_at?: string
+          source_id?: string | null
+          source_type: string
+        }
+        Update: {
+          created_at?: string
+          dimensions?: Json
+          event_type?: string
+          id?: string
+          metrics?: Json
+          occurred_at?: string
+          source_id?: string | null
+          source_type?: string
+        }
+        Relationships: []
       }
       axle_configurations: {
         Row: {
@@ -1335,6 +1558,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      dashboard_kpi_snapshots: {
+        Row: {
+          created_at: string
+          dimensions: Json | null
+          id: string
+          kpi_name: string
+          period: string
+          snapshot_date: string
+          unit: string | null
+          value: number
+        }
+        Insert: {
+          created_at?: string
+          dimensions?: Json | null
+          id?: string
+          kpi_name: string
+          period: string
+          snapshot_date: string
+          unit?: string | null
+          value: number
+        }
+        Update: {
+          created_at?: string
+          dimensions?: Json | null
+          id?: string
+          kpi_name?: string
+          period?: string
+          snapshot_date?: string
+          unit?: string | null
+          value?: number
+        }
+        Relationships: []
       }
       delivery_costs: {
         Row: {
@@ -2572,6 +2828,65 @@ export type Database = {
           years_experience?: number | null
         }
         Relationships: []
+      }
+      driver_documents: {
+        Row: {
+          created_at: string | null
+          document_number: string | null
+          document_type: Database["public"]["Enums"]["driver_document_type"]
+          driver_id: string
+          expiry_date: string | null
+          file_name: string | null
+          file_path: string | null
+          file_size: number | null
+          file_url: string | null
+          id: string
+          mime_type: string | null
+          notes: string | null
+          updated_at: string | null
+          uploaded_by: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          document_number?: string | null
+          document_type: Database["public"]["Enums"]["driver_document_type"]
+          driver_id: string
+          expiry_date?: string | null
+          file_name?: string | null
+          file_path?: string | null
+          file_size?: number | null
+          file_url?: string | null
+          id?: string
+          mime_type?: string | null
+          notes?: string | null
+          updated_at?: string | null
+          uploaded_by?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          document_number?: string | null
+          document_type?: Database["public"]["Enums"]["driver_document_type"]
+          driver_id?: string
+          expiry_date?: string | null
+          file_name?: string | null
+          file_path?: string | null
+          file_size?: number | null
+          file_url?: string | null
+          id?: string
+          mime_type?: string | null
+          notes?: string | null
+          updated_at?: string | null
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "driver_documents_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "drivers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       driver_vehicle_assignments: {
         Row: {
@@ -5017,6 +5332,7 @@ export type Database = {
           supplier: string | null
           unit_price: number | null
           updated_at: string | null
+          vendor_id: string | null
           warranty_claim_contact: string | null
           warranty_end_date: string | null
           warranty_notes: string | null
@@ -5038,6 +5354,7 @@ export type Database = {
           supplier?: string | null
           unit_price?: number | null
           updated_at?: string | null
+          vendor_id?: string | null
           warranty_claim_contact?: string | null
           warranty_end_date?: string | null
           warranty_notes?: string | null
@@ -5059,6 +5376,7 @@ export type Database = {
           supplier?: string | null
           unit_price?: number | null
           updated_at?: string | null
+          vendor_id?: string | null
           warranty_claim_contact?: string | null
           warranty_end_date?: string | null
           warranty_notes?: string | null
@@ -5067,7 +5385,15 @@ export type Database = {
           warranty_start_date?: string | null
           warranty_terms?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "inventory_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       inventory_items: {
         Row: {
@@ -6301,6 +6627,42 @@ export type Database = {
         }
         Relationships: []
       }
+      monitor_audit_log: {
+        Row: {
+          action: string
+          created_at: string | null
+          id: string
+          ip_address: unknown
+          metadata: Json | null
+          resource_id: string | null
+          resource_type: string | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          id?: string
+          ip_address?: unknown
+          metadata?: Json | null
+          resource_id?: string | null
+          resource_type?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          id?: string
+          ip_address?: unknown
+          metadata?: Json | null
+          resource_id?: string | null
+          resource_type?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       overall_condition: {
         Row: {
           created_at: string | null
@@ -6427,6 +6789,8 @@ export type Database = {
       }
       parts_requests: {
         Row: {
+          allocated_at: string | null
+          allocated_to_job_card: boolean | null
           approved_at: string | null
           approved_by: string | null
           cash_manager_approval_date: string | null
@@ -6448,7 +6812,9 @@ export type Database = {
           ordered_by: string | null
           part_name: string
           part_number: string | null
+          procurement_started: boolean | null
           quantity: number
+          quotes: Json | null
           received_by: string | null
           received_date: string | null
           received_quantity: number | null
@@ -6464,9 +6830,12 @@ export type Database = {
           total_price: number | null
           unit_price: number | null
           updated_at: string | null
+          urgency_level: string | null
           vendor_id: string | null
         }
         Insert: {
+          allocated_at?: string | null
+          allocated_to_job_card?: boolean | null
           approved_at?: string | null
           approved_by?: string | null
           cash_manager_approval_date?: string | null
@@ -6488,7 +6857,9 @@ export type Database = {
           ordered_by?: string | null
           part_name: string
           part_number?: string | null
+          procurement_started?: boolean | null
           quantity: number
+          quotes?: Json | null
           received_by?: string | null
           received_date?: string | null
           received_quantity?: number | null
@@ -6504,9 +6875,12 @@ export type Database = {
           total_price?: number | null
           unit_price?: number | null
           updated_at?: string | null
+          urgency_level?: string | null
           vendor_id?: string | null
         }
         Update: {
+          allocated_at?: string | null
+          allocated_to_job_card?: boolean | null
           approved_at?: string | null
           approved_by?: string | null
           cash_manager_approval_date?: string | null
@@ -6528,7 +6902,9 @@ export type Database = {
           ordered_by?: string | null
           part_name?: string
           part_number?: string | null
+          procurement_started?: boolean | null
           quantity?: number
+          quotes?: Json | null
           received_by?: string | null
           received_date?: string | null
           received_quantity?: number | null
@@ -6544,6 +6920,7 @@ export type Database = {
           total_price?: number | null
           unit_price?: number | null
           updated_at?: string | null
+          urgency_level?: string | null
           vendor_id?: string | null
         }
         Relationships: [
@@ -9521,6 +9898,7 @@ export type Database = {
         Row: {
           active: boolean | null
           created_at: string | null
+          current_odometer: number | null
           engine_specs: string | null
           fleet_number: string | null
           id: string
@@ -9537,6 +9915,7 @@ export type Database = {
         Insert: {
           active?: boolean | null
           created_at?: string | null
+          current_odometer?: number | null
           engine_specs?: string | null
           fleet_number?: string | null
           id?: string
@@ -9553,6 +9932,7 @@ export type Database = {
         Update: {
           active?: boolean | null
           created_at?: string | null
+          current_odometer?: number | null
           engine_specs?: string | null
           fleet_number?: string | null
           id?: string
@@ -11587,11 +11967,11 @@ export type Database = {
       }
       calculate_loading_duration: {
         Args: { p_load_id: string }
-        Returns: unknown
+        Returns: string
       }
       calculate_offloading_duration: {
         Args: { p_load_id: string }
-        Returns: unknown
+        Returns: string
       }
       calculate_performance_score: {
         Args: { p_load_id: string }
@@ -11629,7 +12009,11 @@ export type Database = {
           supplier_name: string
         }[]
       }
-      calculate_transit_time: { Args: { p_load_id: string }; Returns: unknown }
+      calculate_transit_time: { Args: { p_load_id: string }; Returns: string }
+      cascade_driver_name_update: {
+        Args: { p_new_name: string; p_old_name: string }
+        Returns: undefined
+      }
       check_geofence_entry: {
         Args: { p_latitude: number; p_longitude: number; p_vehicle_id: string }
         Returns: boolean
@@ -11986,6 +12370,13 @@ export type Database = {
         | "quality_check"
         | "completion_certificate"
         | "other"
+      driver_document_type:
+        | "license"
+        | "pdp"
+        | "passport"
+        | "medical"
+        | "retest"
+        | "defensive_driving"
       driver_status: "active" | "inactive" | "suspended" | "terminated"
       evaluation_status: "pending" | "passed" | "failed" | "scheduled"
       evaluation_step: "interview" | "yard_test" | "road_test"
@@ -12300,6 +12691,14 @@ export const Constants = {
         "quality_check",
         "completion_certificate",
         "other",
+      ],
+      driver_document_type: [
+        "license",
+        "pdp",
+        "passport",
+        "medical",
+        "retest",
+        "defensive_driving",
       ],
       driver_status: ["active", "inactive", "suspended", "terminated"],
       evaluation_status: ["pending", "passed", "failed", "scheduled"],

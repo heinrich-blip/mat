@@ -1,10 +1,10 @@
-import { Card } from "@/components/ui/card";
-import { Gauge, TrendingUp, TrendingDown, AlertTriangle, Info } from "lucide-react";
-import { PressureHealthStatus } from "@/types/tyre";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { PressureHealthStatus } from "@/types/tyre";
+import { AlertTriangle, Gauge, Info, TrendingDown, TrendingUp } from "lucide-react";
 
 interface PressureIndicatorProps {
   current: number;
@@ -128,8 +128,8 @@ const PressureIndicator = ({
   const convertValue = (value: number) => value * unitConfig.conversion;
   const formatValue = (value: number) => {
     const converted = convertValue(value);
-    return converted % 1 === 0 ? 
-      converted.toString() : 
+    return converted % 1 === 0 ?
+      converted.toString() :
       converted.toFixed(unitConfig.precision);
   };
 
@@ -137,7 +137,7 @@ const PressureIndicator = ({
   const currentPercentage = Math.max(0, Math.min(100, (current / max) * 100));
   const recommendedPercentage = (recommended / max) * 100;
   const minPercentage = (min / max) * 100;
-  
+
   // Calculate deviation from recommended
   const deviation = current - recommended;
   const deviationPercentage = Math.abs(deviation / recommended) * 100;
@@ -185,10 +185,10 @@ const PressureIndicator = ({
                 {unitConfig.symbol}
               </p>
             </div>
-            
+
             {/* Status badge with deviation */}
             <div className="mt-2">
-              <Badge 
+              <Badge
                 variant={health === "critical" ? "destructive" : "outline"}
                 className={cn(
                   config.color,
@@ -207,7 +207,7 @@ const PressureIndicator = ({
               </Badge>
             </div>
           </div>
-          
+
           <div className={cn(
             "p-2 rounded-lg transition-transform hover:scale-110",
             config.bgColor,
@@ -223,14 +223,14 @@ const PressureIndicator = ({
             {/* Main bar */}
             <div className="h-6 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden relative">
               {/* Safe zone indicators */}
-              <div 
+              <div
                 className="absolute inset-y-0 bg-emerald-500/20"
-                style={{ 
-                  left: `${minPercentage}%`, 
-                  width: `${recommendedPercentage - minPercentage}%` 
+                style={{
+                  left: `${minPercentage}%`,
+                  width: `${recommendedPercentage - minPercentage}%`
                 }}
               />
-              
+
               {/* Current pressure indicator */}
               <div
                 className={cn(
@@ -239,7 +239,7 @@ const PressureIndicator = ({
                 )}
                 style={{ width: `${currentPercentage}%` }}
               />
-              
+
               {/* Recommended marker */}
               <div className="group">
                 <div
@@ -280,14 +280,14 @@ const PressureIndicator = ({
                   </div>
                 </div>
               </div>
-              
+
               <div className="space-y-2">
                 <div className="text-xs text-muted-foreground">Deviation</div>
                 <div className="p-2 bg-gray-50 dark:bg-gray-900 rounded text-center">
                   <div className={cn(
                     "text-sm font-semibold",
-                    deviation === 0 ? "text-emerald-600" : 
-                    deviation < 0 ? "text-amber-600" : "text-orange-600"
+                    deviation === 0 ? "text-emerald-600" :
+                      deviation < 0 ? "text-amber-600" : "text-orange-600"
                   )}>
                     {deviation > 0 ? "+" : ""}{formatValue(deviation)} {unitConfig.symbol}
                   </div>
@@ -330,7 +330,7 @@ const PressureIndicator = ({
               <p className="text-xs leading-relaxed">
                 {config.alert?.message || "Pressure is within the optimal range for performance and safety."}
               </p>
-              
+
               {/* Action buttons */}
               {showActions && config.action && (
                 <div className="mt-3 flex gap-2">
@@ -386,18 +386,4 @@ const PressureIndicator = ({
 };
 
 // Helper function to determine health status from pressure values
-export const getPressureHealthStatus = (
-  current: number,
-  recommended: number,
-  tolerance = 10
-): PressureHealthStatus => {
-  const deviation = Math.abs(current - recommended);
-  const deviationPercentage = (deviation / recommended) * 100;
-
-  if (current < recommended * 0.7) return "critical";
-  if (current < recommended - tolerance) return "low";
-  if (current > recommended + tolerance) return "high";
-  return "normal";
-};
-
 export default PressureIndicator;

@@ -11,17 +11,19 @@ const DEFAULT_FILTERS: AlertFilters = {
   sourceTypes: [],
   statuses: ["active"],
   searchQuery: "",
+  selectedVehicle: null,
+  selectedFleets: [],
 };
 
 function getDateRange(range: AlertFilters["timeRange"]): { startDate: Date; endDate: Date } {
   const now = new Date();
   switch (range) {
-    case "last1h":  return { startDate: subHours(now, 1),   endDate: now };
-    case "last6h":  return { startDate: subHours(now, 6),   endDate: now };
-    case "last24h": return { startDate: subHours(now, 24),  endDate: now };
-    case "last7d":  return { startDate: subDays(now, 7),    endDate: now };
-    case "last30d": return { startDate: subDays(now, 30),   endDate: now };
-    default:        return { startDate: subHours(now, 24),  endDate: now };
+    case "last1h": return { startDate: subHours(now, 1), endDate: now };
+    case "last6h": return { startDate: subHours(now, 6), endDate: now };
+    case "last24h": return { startDate: subHours(now, 24), endDate: now };
+    case "last7d": return { startDate: subDays(now, 7), endDate: now };
+    case "last30d": return { startDate: subDays(now, 30), endDate: now };
+    default: return { startDate: subHours(now, 24), endDate: now };
   }
 }
 
@@ -83,6 +85,33 @@ export function useAlertFilters() {
     setFilters((f) => ({ ...f, searchQuery: query }));
   }, []);
 
+  // New vehicle/fleet filter functions
+  const setVehicleFilter = useCallback((vehicleId: string | null) => {
+    setFilters((f) => ({
+      ...f,
+      selectedVehicle: vehicleId,
+      selectedFleets: vehicleId ? [] : f.selectedFleets,
+    }));
+  }, []);
+
+  const toggleFleetFilter = useCallback((fleetNumber: string) => {
+    setFilters((f) => ({
+      ...f,
+      selectedFleets: f.selectedFleets.includes(fleetNumber)
+        ? f.selectedFleets.filter((fNum) => fNum !== fleetNumber)
+        : [...f.selectedFleets, fleetNumber],
+      selectedVehicle: null,
+    }));
+  }, []);
+
+  const clearVehicleFilters = useCallback(() => {
+    setFilters((f) => ({
+      ...f,
+      selectedVehicle: null,
+      selectedFleets: [],
+    }));
+  }, []);
+
   const resetFilters = useCallback(() => {
     setFilters({ ...DEFAULT_FILTERS, ...getDateRange("last24h") });
   }, []);
@@ -92,7 +121,9 @@ export function useAlertFilters() {
     filters.categories.length +
     filters.sourceTypes.length +
     (filters.statuses.length === 1 && filters.statuses[0] === "active" ? 0 : filters.statuses.length) +
-    (filters.searchQuery ? 1 : 0);
+    (filters.searchQuery ? 1 : 0) +
+    (filters.selectedVehicle ? 1 : 0) +
+    filters.selectedFleets.length;
 
   return {
     filters,
@@ -103,6 +134,9 @@ export function useAlertFilters() {
     toggleSourceType,
     toggleStatus,
     setSearchQuery,
+    setVehicleFilter,
+    toggleFleetFilter,
+    clearVehicleFilters,
     resetFilters,
     activeFilterCount,
   };

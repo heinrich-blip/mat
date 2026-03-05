@@ -1,15 +1,16 @@
-import { Bell, RefreshCw } from "lucide-react";
 import AlertCard from "@/components/alerts/AlertCard";
 import AlertFilterBar from "@/components/alerts/AlertFilterBar";
-import { useAlerts, useAlertCounts } from "@/hooks/useAlerts";
 import { useAlertFilters } from "@/hooks/useAlertFilters";
+import { useAlertCounts, useAlerts } from "@/hooks/useAlerts";
 import { cn } from "@/lib/utils";
+import { Bell, RefreshCw } from "lucide-react";
 
+/* Professional severity count styling */
 const SEVERITY_COLORS = {
-  critical: "text-red-400 bg-red-500/10",
-  high:     "text-orange-400 bg-orange-500/10",
-  medium:   "text-amber-400 bg-amber-500/10",
-  low:      "text-blue-400 bg-blue-500/10",
+  critical: "text-destructive bg-destructive/10 border-destructive/20",
+  high: "text-severity-high bg-severity-high/10 border-severity-high/20",
+  medium: "text-severity-medium bg-severity-medium/10 border-severity-medium/20",
+  low: "text-severity-low bg-severity-low/10 border-severity-low/20",
 };
 
 export default function AlertsPage() {
@@ -26,39 +27,44 @@ export default function AlertsPage() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Page header */}
+      {/* Professional Page Header */}
       <div className="flex-shrink-0 px-6 pt-6 pb-4 space-y-4">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <Bell className="h-5 w-5 text-primary" />
-            <h1 className="text-lg font-bold text-foreground">Live Alert Feed</h1>
-            {totalCount > 0 && (
-              <span className="text-sm text-muted-foreground">
-                {totalCount.toLocaleString()} alert{totalCount !== 1 ? "s" : ""}
-              </span>
-            )}
+            <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Bell className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-lg font-semibold text-foreground tracking-tight">Live Alert Feed</h1>
+              {totalCount > 0 && (
+                <span className="text-sm text-muted-foreground">
+                  {totalCount.toLocaleString()} alert{totalCount !== 1 ? "s" : ""}
+                </span>
+              )}
+            </div>
           </div>
 
-          {/* Severity count pills */}
+          {/* Severity count pills - using real counts from the API */}
           <div className="flex items-center gap-2">
-            {(["critical", "high", "medium", "low"] as const).map((sev) => (
-              counts && counts[sev] > 0 ? (
+            {(["critical", "high", "medium", "low"] as const).map((sev) => {
+              const count = counts?.[sev] ?? 0;
+              return count > 0 ? (
                 <span
                   key={sev}
                   className={cn(
-                    "text-xs font-semibold px-2.5 py-1 rounded-full",
+                    "text-xs font-semibold px-2.5 py-1 rounded-md border",
                     SEVERITY_COLORS[sev]
                   )}
                 >
-                  {counts[sev]} {sev.charAt(0).toUpperCase() + sev.slice(1)}
+                  {count} {sev.charAt(0).toUpperCase() + sev.slice(1)}
                 </span>
-              ) : null
-            ))}
+              ) : null;
+            })}
 
             <button
               onClick={() => refetch()}
               disabled={isRefetching}
-              className="ml-2 p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              className="ml-2 p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors border border-transparent hover:border-border"
               title="Refresh"
             >
               <RefreshCw className={cn("h-4 w-4", isRefetching && "animate-spin")} />
@@ -81,11 +87,13 @@ export default function AlertsPage() {
           </div>
         ) : allAlerts.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-40 gap-3">
-            <Bell className="h-8 w-8 text-muted-foreground/40" />
+            <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center">
+              <Bell className="h-6 w-6 text-muted-foreground/50" />
+            </div>
             <p className="text-muted-foreground text-sm">No alerts match the current filters</p>
             <button
               onClick={filterState.resetFilters}
-              className="text-xs text-primary hover:underline"
+              className="text-xs text-primary hover:text-primary/80 font-medium transition-colors"
             >
               Clear filters
             </button>
@@ -101,7 +109,7 @@ export default function AlertsPage() {
               <button
                 onClick={() => fetchNextPage()}
                 disabled={isFetchingNextPage}
-                className="w-full py-3 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-accent transition-colors disabled:opacity-50"
+                className="w-full py-3 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-accent transition-colors disabled:opacity-50 font-medium"
               >
                 {isFetchingNextPage ? "Loading more…" : "Load more alerts"}
               </button>

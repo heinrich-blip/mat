@@ -6,6 +6,7 @@
 | App | Location | Stack | Purpose |
 |-----|----------|-------|---------|
 | Dashboard | `./` (src/) | Vite + React + TS | Back-office |
+Monitor app which feeds all alerts from main dashboard app 
 | Workshop Mobile | `./mobile/` | Vite + React + TS | Workshop staff |
 | Driver App | `./mobile-app-nextjs/` | Next.js + React | Drivers/field |
 
