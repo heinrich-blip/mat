@@ -1,14 +1,13 @@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import
-    {
-        Dialog,
-        DialogContent,
-        DialogDescription,
-        DialogFooter,
-        DialogHeader,
-        DialogTitle,
-    } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -56,8 +55,7 @@ export default function EnhancedRequestPartsDialog({
 
   // Computed values
   const totalPrice = quantity * unitPrice;
-  const hasInsufficientStock =
-    selectedInventoryId && quantity > availableQuantity;
+  const hasInsufficientStock = selectedInventoryId && quantity > availableQuantity;
   const isLowStock = availableQuantity > 0 && availableQuantity <= quantity * 2;
 
   // Reset form when dialog closes
@@ -107,9 +105,6 @@ export default function EnhancedRequestPartsDialog({
       return;
     }
 
-    // Allow insufficient stock items - they will be procured
-    // Just show a warning but don't block submission
-
     setIsSubmitting(true);
 
     try {
@@ -119,11 +114,12 @@ export default function EnhancedRequestPartsDialog({
       } = await supabase.auth.getUser();
 
       // Determine fulfilment path:
-      // - inventory item with sufficient stock → fulfilled immediately, never goes to procurement
-      // - inventory item with no/insufficient stock → pending, goes to Procurement → All Requests
-      // - external part / service / repair (no inventory) → pending, goes to Procurement → All Requests
+      // - inventory item with sufficient stock → fulfilled immediately (DOES NOT go to procurement)
+      // - inventory item with insufficient stock → pending (goes to procurement)
+      // - external part (no inventory) → pending (goes to procurement)
       const fulfilledFromStock = !!selectedInventoryId && !hasInsufficientStock;
 
+      // For out of stock items, add a note indicating they need procurement
       const stockNote = hasInsufficientStock
         ? `[OUT OF STOCK - needs procurement] Available: ${availableQuantity}, Requested: ${quantity}${notes ? '. ' + notes : ''}`
         : notes || null;
@@ -136,6 +132,7 @@ export default function EnhancedRequestPartsDialog({
           quantity,
           job_card_id: jobCardId,
           notes: fulfilledFromStock ? (notes || null) : stockNote,
+          // CRITICAL: Fulfilled items get status "fulfilled", others get "pending"
           status: fulfilledFromStock ? "fulfilled" : "pending",
           inventory_id: selectedInventoryId || null,
           is_from_inventory: !!selectedInventoryId,
@@ -257,7 +254,7 @@ export default function EnhancedRequestPartsDialog({
                   ) : (
                     <>
                       <strong>In stock:</strong> {availableQuantity} units
-                      available.
+                      available. This item will be allocated immediately.
                     </>
                   )}
                   {location && ` Location: ${location}`}

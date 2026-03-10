@@ -226,6 +226,8 @@ type PartsRequestInsert = {
   document_url: string | null;
   document_name: string | null;
   inventory_id: string | null;
+  allocated_to_job_card?: boolean;
+  allocated_at?: string;
 };
 
 export function useAddPartForm(
@@ -415,6 +417,16 @@ export function useAddPartForm(
         return;
       }
 
+      // ADDED: Validate vendor selection for external parts
+      if (state.sourceType === "external" && !state.selectedVendorId) {
+        toast({
+          variant: "destructive",
+          title: "Validation Error",
+          description: "Please select a vendor for external parts",
+        });
+        return;
+      }
+
       // Check for repeated usage on the same vehicle (only for parts, not services)
       if (state.sourceType !== "service" && !repeatReason) {
         const usages = await checkForRepeatedUsage(
@@ -447,7 +459,7 @@ export function useAddPartForm(
             : repeatNote;
         }
 
-        // Prepare the insert data with proper typing
+        // Prepare the insert data with proper typing - FIXED: vendor_id is now set for external parts
         const insertData: PartsRequestInsert = {
           job_card_id: jobCardId,
           part_name: state.partName,
@@ -455,10 +467,11 @@ export function useAddPartForm(
           quantity: state.quantity,
           notes: finalNotes,
           status: "pending",
-          unit_price: null,
-          total_price: null,
-          vendor_id: null,
-          ir_number: null,
+          unit_price: state.unitPrice || null,
+          total_price: totalPrice || null,
+          // FIXED: Set vendor_id for external parts, null for others
+          vendor_id: state.sourceType === "external" ? state.selectedVendorId : null,
+          ir_number: state.irNumber || null,
           is_service: state.sourceType === "service",
           is_from_inventory: state.sourceType === "inventory",
           service_description: state.sourceType === "service" ? state.serviceDescription : null,
@@ -468,10 +481,10 @@ export function useAddPartForm(
         };
 
         // If it's an inventory item with sufficient stock, we can allocate directly
-        if (state.sourceType === "inventory" && 
-            state.selectedInventoryId && 
-            !hasInsufficientStock) {
-          
+        if (state.sourceType === "inventory" &&
+          state.selectedInventoryId &&
+          !hasInsufficientStock) {
+
           // Update inventory quantity
           const newQuantity = Math.max(0, state.availableQuantity - state.quantity);
           const { error: inventoryError } = await supabase
@@ -484,8 +497,11 @@ export function useAddPartForm(
             throw inventoryError;
           }
 
-          // Set status to approved since we're allocating from inventory
-          insertData.status = "approved";
+          // Mark as fulfilled since we're allocating from inventory - 
+          // this removes it from the procurement list
+          insertData.status = "fulfilled";
+          insertData.allocated_to_job_card = true;
+          insertData.allocated_at = new Date().toISOString();
         }
 
         // Create the parts request
@@ -520,11 +536,11 @@ export function useAddPartForm(
         queryClient.invalidateQueries({ queryKey: ["inventory"] });
         queryClient.invalidateQueries({ queryKey: ["job_card_parts", jobCardId] });
         queryClient.invalidateQueries({ queryKey: ["procurement-requests"] });
-        
+
         requestGoogleSheetsSync('workshop');
         onSuccess();
         onOpenChange(false);
-        
+
       } catch (error) {
         console.error("Error in handleSubmit:", error);
         toast({
@@ -546,6 +562,7 @@ export function useAddPartForm(
       checkForRepeatedUsage,
       uploadDocument,
       hasInsufficientStock,
+      totalPrice,
     ]
   );
 
@@ -553,7 +570,7 @@ export function useAddPartForm(
     (reason: string) => {
       dispatch({ type: "SET_SHOW_REPEATED_ALERT", payload: false });
       const syntheticEvent = {
-        preventDefault: () => {},
+        preventDefault: () => { },
       } as React.FormEvent;
       handleSubmit(syntheticEvent, reason);
     },

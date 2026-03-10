@@ -1,6 +1,6 @@
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
 import { requestGoogleSheetsSync } from "@/hooks/useGoogleSheetsSync";
+import { supabase } from "@/integrations/supabase/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 // Types
@@ -124,7 +124,10 @@ const PROCUREMENT_KEYS = {
   vendors: ["vendors"] as const,
 };
 
-// Hook to fetch all procurement requests (parts_requests not from inventory)
+/**
+ * Hook to fetch ALL procurement requests with proper filtering.
+ * Fulfilled inventory items are EXCLUDED as they don't need procurement.
+ */
 export const useProcurementRequests = (status?: string) => {
   return useQuery({
     queryKey: status ? [...PROCUREMENT_KEYS.all, status] : PROCUREMENT_KEYS.all,
@@ -137,6 +140,10 @@ export const useProcurementRequests = (status?: string) => {
           vendor:vendors(id, vendor_name, contact_person, phone),
           inventory:inventory(id, name, part_number, quantity)
         `)
+        // EXCLUDE fulfilled inventory items - they don't need procurement
+        // EXCLUDE items already allocated to job cards from inventory
+        .not('status', 'eq', 'fulfilled')
+        .or('allocated_to_job_card.is.null,allocated_to_job_card.eq.false')
         .order("created_at", { ascending: false });
 
       if (status) {
@@ -150,7 +157,10 @@ export const useProcurementRequests = (status?: string) => {
   });
 };
 
-// Hook to fetch pending requests (not yet approved or fulfilled)
+/**
+ * Hook to fetch pending requests that need attention.
+ * Only returns items that are NOT fulfilled inventory items.
+ */
 export const usePendingRequests = () => {
   return useQuery({
     queryKey: PROCUREMENT_KEYS.pending,
@@ -164,6 +174,10 @@ export const usePendingRequests = () => {
           inventory:inventory(id, name, part_number, quantity)
         `)
         .in("status", ["pending", "requested", "ordered"])
+         // EXCLUDE fulfilled inventory items (shouldn't be in pending anyway, but just in case)
+         // EXCLUDE items already allocated to job cards from inventory
+         .not('status', 'eq', 'fulfilled')
+         .or('allocated_to_job_card.is.null,allocated_to_job_card.eq.false')
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -172,7 +186,9 @@ export const usePendingRequests = () => {
   });
 };
 
-// Hook to fetch low stock items from inventory
+/**
+ * Hook to fetch low stock items from inventory
+ */
 export const useLowStockItems = () => {
   return useQuery({
     queryKey: PROCUREMENT_KEYS.lowStock,
@@ -197,7 +213,9 @@ export const useLowStockItems = () => {
   });
 };
 
-// Hook to fetch vendors for selection
+/**
+ * Hook to fetch vendors for selection
+ */
 export const useVendors = () => {
   return useQuery({
     queryKey: PROCUREMENT_KEYS.vendors,
@@ -213,7 +231,9 @@ export const useVendors = () => {
   });
 };
 
-// Hook to create a new procurement request
+/**
+ * Hook to create a new procurement request
+ */
 export const useCreateProcurementRequest = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -253,7 +273,9 @@ export const useCreateProcurementRequest = () => {
   });
 };
 
-// Hook to update request status
+/**
+ * Hook to update request status
+ */
 export const useUpdateRequestStatus = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -314,7 +336,9 @@ export const useUpdateRequestStatus = () => {
   });
 };
 
-// Hook to assign vendor to request
+/**
+ * Hook to assign vendor to request
+ */
 export const useAssignVendor = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -369,7 +393,9 @@ export const useAssignVendor = () => {
   });
 };
 
-// Hook to mark request as received and update inventory
+/**
+ * Hook to mark request as received and update inventory
+ */
 export const useReceiveOrder = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -434,7 +460,9 @@ export const useReceiveOrder = () => {
   });
 };
 
-// Hook to create replenishment request for low stock item
+/**
+ * Hook to create replenishment request for low stock item
+ */
 export const useCreateReplenishmentRequest = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -475,14 +503,18 @@ export const useCreateReplenishmentRequest = () => {
   });
 };
 
-// Statistics hook
+/**
+ * Statistics hook - only counts items that need procurement
+ */
 export const useProcurementStats = () => {
   return useQuery({
     queryKey: ["procurement-stats"],
     queryFn: async () => {
       const { data: requests, error } = await supabase
         .from("parts_requests")
-        .select("status, total_price");
+        .select("status, total_price, is_from_inventory")
+        // Exclude fulfilled inventory items from stats
+        .or('status.neq.fulfilled,and(status.eq.fulfilled,is_from_inventory.eq.false)');
 
       if (error) throw error;
 
@@ -498,7 +530,7 @@ export const useProcurementStats = () => {
         pendingValue: 0,
       };
 
-      // Type for database response (without new columns until migration is applied)
+      // Type for database response
       type DbRequest = { status: string | null; total_price: number | null };
 
       ((requests || []) as DbRequest[]).forEach((req) => {
@@ -506,8 +538,6 @@ export const useProcurementStats = () => {
         if (status in stats) {
           stats[status as keyof typeof stats]++;
         }
-        // sage_pending and cash_manager_pending will be accurate after migration
-        // For now, approximate: approved items are awaiting Sage
         if (status === "approved") {
           stats.sage_pending++;
         }
@@ -549,9 +579,13 @@ export interface UpdateProcurementRequest {
   status?: string;
   ir_number?: string | null;
   quotes?: QuoteAttachment[];
+  procurement_started?: boolean | null;
+  allocated_to_job_card?: boolean | null;
 }
 
-// Hook to update/edit a procurement request
+/**
+ * Hook to update/edit a procurement request
+ */
 export const useUpdateProcurementRequest = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -598,6 +632,8 @@ export const useUpdateProcurementRequest = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: PROCUREMENT_KEYS.all });
       queryClient.invalidateQueries({ queryKey: PROCUREMENT_KEYS.pending });
+      queryClient.invalidateQueries({ queryKey: PROCUREMENT_KEYS.openRequests });
+      queryClient.invalidateQueries({ queryKey: PROCUREMENT_KEYS.cashManager });
       queryClient.invalidateQueries({ queryKey: ["procurement-stats"] });
       toast({ title: "Success", description: "Request updated successfully" });
       requestGoogleSheetsSync('workshop');
@@ -608,7 +644,9 @@ export const useUpdateProcurementRequest = () => {
   });
 };
 
-// Hook to delete a procurement request
+/**
+ * Hook to delete a procurement request
+ */
 export const useDeleteProcurementRequest = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -636,7 +674,9 @@ export const useDeleteProcurementRequest = () => {
   });
 };
 
-// Hook to update Sage requisition details
+/**
+ * Hook to update Sage requisition details
+ */
 export const useUpdateSageRequisition = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -679,7 +719,9 @@ export const useUpdateSageRequisition = () => {
   });
 };
 
-// Hook to update Cash Manager approval
+/**
+ * Hook to update Cash Manager approval
+ */
 export const useUpdateCashManagerApproval = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -724,7 +766,9 @@ export const useUpdateCashManagerApproval = () => {
   });
 };
 
-// Hook to mark as ordered with vendor
+/**
+ * Hook to mark as ordered with vendor
+ */
 export const useMarkAsOrdered = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -787,7 +831,9 @@ export const useMarkAsOrdered = () => {
   });
 };
 
-// Hook to mark as received with inventory update
+/**
+ * Hook to mark as received with inventory update
+ */
 export const useMarkAsReceived = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -883,9 +929,10 @@ export const useMarkAsReceived = () => {
   });
 };
 
-// ======== NEW HOOKS FOR PROCUREMENT WORKFLOW OVERHAUL ========
-
-// Hook to fetch open requests (not yet in procurement, not fulfilled/allocated)
+/**
+ * Hook to fetch open requests (not yet in procurement, not fulfilled/allocated)
+ * These are items that need to be started in procurement
+ */
 export const useOpenRequests = () => {
   return useQuery({
     queryKey: PROCUREMENT_KEYS.openRequests,
@@ -898,6 +945,7 @@ export const useOpenRequests = () => {
           vendor:vendors(id, vendor_name, contact_person, phone),
           inventory:inventory(id, name, part_number, quantity)
         `)
+        // Only items that haven't started procurement AND are not fulfilled inventory items
         .or("procurement_started.is.null,procurement_started.eq.false")
         .not("status", "in", '("fulfilled","rejected")')
         .or("allocated_to_job_card.is.null,allocated_to_job_card.eq.false")
@@ -909,7 +957,9 @@ export const useOpenRequests = () => {
   });
 };
 
-// Hook to fetch Cash Manager requests (procurement started, not yet fulfilled/allocated)
+/**
+ * Hook to fetch Cash Manager requests (procurement started, not yet fulfilled/allocated)
+ */
 export const useCashManagerRequests = () => {
   return useQuery({
     queryKey: PROCUREMENT_KEYS.cashManager,
@@ -921,6 +971,8 @@ export const useCashManagerRequests = () => {
       const { data, error } = await query
         .eq("procurement_started", true)
         .not("status", "eq", "fulfilled")
+        // Also exclude items already allocated to job cards from inventory
+        .or('allocated_to_job_card.is.null,allocated_to_job_card.eq.false')
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -929,7 +981,9 @@ export const useCashManagerRequests = () => {
   });
 };
 
-// Hook to start procurement process (create IR + quotes)
+/**
+ * Hook to start procurement process (create IR + quotes)
+ */
 export const useStartProcurement = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -1015,7 +1069,9 @@ export const useStartProcurement = () => {
   });
 };
 
-// Hook to allocate received item to job card
+/**
+ * Hook to allocate received item to job card
+ */
 export const useAllocateToJobCard = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -1055,7 +1111,9 @@ export const useAllocateToJobCard = () => {
   });
 };
 
-// Hook to create a new inventory item and link it to a parts request
+/**
+ * Hook to create a new inventory item and link it to a parts request
+ */
 export const useCreateInventoryAndLink = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();

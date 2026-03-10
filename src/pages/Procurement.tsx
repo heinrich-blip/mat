@@ -1,122 +1,117 @@
 import InventoryPanel from "@/components/InventoryPanel";
 import Layout from "@/components/Layout";
-import
-  {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-  } from "@/components/ui/alert-dialog";
+import {
+AlertDialog,
+AlertDialogAction,
+AlertDialogCancel,
+AlertDialogContent,
+AlertDialogDescription,
+AlertDialogFooter,
+AlertDialogHeader,
+AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DatePicker } from "@/components/ui/date-picker";
-import
-  {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-  } from "@/components/ui/dialog";
-import
-  {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-  } from "@/components/ui/dropdown-menu";
+import {
+Dialog,
+DialogContent,
+DialogDescription,
+DialogFooter,
+DialogHeader,
+DialogTitle,
+} from "@/components/ui/dialog";
+import {
+DropdownMenu,
+DropdownMenuContent,
+DropdownMenuItem,
+DropdownMenuSeparator,
+DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 /* ScrollArea used in Cash Manager tab */
 import { ScrollArea } from "@/components/ui/scroll-area";
-import
-  {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-  } from "@/components/ui/select";
-import
-  {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-  } from "@/components/ui/table";
+import {
+Select,
+SelectContent,
+SelectItem,
+SelectTrigger,
+SelectValue,
+} from "@/components/ui/select";
+import {
+Table,
+TableBody,
+TableCell,
+TableHead,
+TableHeader,
+TableRow,
+} from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import
-  {
-    type LowStockItem,
-    type PartsRequest,
-    useAllocateToJobCard,
-    useAssignVendor,
-    useCashManagerRequests,
-    useCreateProcurementRequest,
-    useCreateReplenishmentRequest,
-    useDeleteProcurementRequest,
-    useLowStockItems,
-    useMarkAsOrdered,
-    useMarkAsReceived,
-    useOpenRequests,
-    useProcurementRequests,
-    useProcurementStats,
-    useReceiveOrder,
-    useUpdateCashManagerApproval,
-    useUpdateProcurementRequest,
-    useUpdateRequestStatus,
-    useUpdateSageRequisition,
-    useVendors
-  } from "@/hooks/useProcurement";
+import {
+type LowStockItem,
+type PartsRequest,
+useAllocateToJobCard,
+useAssignVendor,
+useCashManagerRequests,
+useCreateProcurementRequest,
+useCreateReplenishmentRequest,
+useDeleteProcurementRequest,
+useLowStockItems,
+useMarkAsOrdered,
+useMarkAsReceived,
+useOpenRequests,
+useProcurementRequests,
+useProcurementStats,
+useReceiveOrder,
+useUpdateCashManagerApproval,
+useUpdateProcurementRequest,
+useUpdateRequestStatus,
+useUpdateSageRequisition,
+useVendors
+} from "@/hooks/useProcurement";
 import StartProcurementDialog from "@/components/dialogs/StartProcurementDialog";
 import { formatDate } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
-import
-  {
-    AlertTriangle,
-    BookOpen,
-    Check,
-    CheckCircle,
-    ChevronDown,
-    ChevronRight,
-    Clock,
-    CreditCard,
-    DollarSign,
-    Download,
-    Edit,
-    FileDown,
-    FileText,
-    Loader2,
-    MoreHorizontal,
-    Package,
-    PackagePlus,
-    Plus,
-    ShoppingBag,
-    ShoppingCart,
-    Store,
-    Trash2,
-    Truck,
-    Wrench,
-    X
-  } from "lucide-react";
+import {
+AlertTriangle,
+BookOpen,
+Check,
+CheckCircle,
+ChevronDown,
+ChevronRight,
+Clock,
+CreditCard,
+DollarSign,
+Download,
+Edit,
+FileDown,
+FileText,
+Loader2,
+MoreHorizontal,
+Package,
+PackagePlus,
+Plus,
+ShoppingBag,
+ShoppingCart,
+Store,
+Trash2,
+Truck,
+Wrench,
+X
+} from "lucide-react";
 import React, { useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { useToast } from "@/hooks/use-toast";
 
 const Procurement = () => {
+  const { toast } = useToast();
   const { data: allRequests = [], isLoading: loadingRequests } = useProcurementRequests();
   const { data: openRequests = [] } = useOpenRequests();
   const { data: cashManagerRequests = [] } = useCashManagerRequests();
@@ -469,6 +464,38 @@ const Procurement = () => {
     setReceiveForm({ received_quantity: "", received_by: "" });
   };
 
+  // Handler to move request back from Cash Manager to All Requests
+  const handleMoveToAllRequests = async (request: PartsRequest) => {
+    await updateRequest.mutateAsync({
+      id: request.id,
+      procurement_started: false,
+    });
+    toast({ title: "Moved to All Requests", description: "Request moved back to general queue" });
+  };
+
+  // Handler for bulk move to All Requests
+  const handleBulkMoveToAllRequests = async () => {
+    const requestsToMove = cashManagerRequests.filter(r => selectedRequestIds.has(r.id));
+    for (const request of requestsToMove) {
+      await updateRequest.mutateAsync({
+        id: request.id,
+        procurement_started: false,
+      });
+    }
+    setSelectedRequestIds(new Set());
+    toast({ title: "Moved to All Requests", description: `${requestsToMove.length} requests moved back to general queue` });
+  };
+
+  // Handler for bulk allocate to job cards
+  const handleBulkAllocate = async () => {
+    const requestsToAllocate = cashManagerRequests.filter(r => selectedRequestIds.has(r.id) && !r.allocated_to_job_card);
+    for (const request of requestsToAllocate) {
+      await allocateToJobCard.mutateAsync(request.id);
+    }
+    setSelectedRequestIds(new Set());
+    toast({ title: "Allocated", description: `${requestsToAllocate.length} requests allocated to job cards` });
+  };
+
   // Lead time calculation helper
   const calculateLeadTime = (startDate: string | null, endDate: string | null): { days: number; hours: number; formatted: string } | null => {
     if (!startDate || !endDate) return null;
@@ -582,17 +609,17 @@ const Procurement = () => {
   // Group cash manager requests by IR number for collapsible view
   const filteredCashManager = useMemo(() => {
     let filtered = cashManagerRequests;
-    
+
     // Apply status filter
     if (statusFilter !== "all") {
       filtered = filtered.filter(r => r.status.toLowerCase() === statusFilter);
     }
-    
+
     // Apply urgency filter
     if (urgencyFilter !== "all") {
       filtered = filtered.filter(r => r.urgency_level === urgencyFilter);
     }
-    
+
     return filtered;
   }, [cashManagerRequests, statusFilter, urgencyFilter]);
 
@@ -952,10 +979,10 @@ const Procurement = () => {
     const worksheetData = filteredCashManager.map((request) => {
       const leadTime = getLeadTime(request);
       const totalTime = getTotalProcurementTime(request);
-      const urgencyLabel = request.urgency_level === 'urgent' ? 'Urgent' 
+      const urgencyLabel = request.urgency_level === 'urgent' ? 'Urgent'
         : request.urgency_level === '1-week' ? '1 Week'
-        : request.urgency_level === '2-weeks' ? '2 Weeks'
-        : '-';
+          : request.urgency_level === '2-weeks' ? '2 Weeks'
+            : '-';
       return {
         "Part Name": request.part_name,
         "Part Number": request.part_number || "-",
@@ -1117,10 +1144,10 @@ const Procurement = () => {
       head: [["Part Name", "IR #", "Urgency", "Qty", "Price", "Vendor", "CM Ref", "CM Date", "Status", "Ordered", "Received", "Lead Time"]],
       body: filteredCashManager.map((r) => {
         const leadTime = getLeadTime(r);
-        const urgencyLabel = r.urgency_level === 'urgent' ? 'Urgent' 
+        const urgencyLabel = r.urgency_level === 'urgent' ? 'Urgent'
           : r.urgency_level === '1-week' ? '1 Week'
-          : r.urgency_level === '2-weeks' ? '2 Weeks'
-          : '-';
+            : r.urgency_level === '2-weeks' ? '2 Weeks'
+              : '-';
         return [
           r.part_name,
           r.ir_number || r.sage_requisition_number || "-",
@@ -1179,1218 +1206,1443 @@ const Procurement = () => {
         </TabsContent>
 
         <TabsContent value="procurement" className="mt-0">
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <Button onClick={() => setCreateDialogOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Request
-          </Button>
-        </div>
-
-        {/* Stats Cards */}
-        <div className="grid gap-4 md:grid-cols-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Pending</CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-semibold">{stats?.pending || 0}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">IR Pending</CardTitle>
-              <BookOpen className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-semibold">{stats?.sage_pending || 0}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Cash Mgr Pending</CardTitle>
-              <CreditCard className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-semibold">{stats?.cash_manager_pending || 0}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Ordered</CardTitle>
-              <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-semibold">{stats?.ordered || 0}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Received</CardTitle>
-              <CheckCircle className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-semibold">{stats?.received || 0}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Pending Value</CardTitle>
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-semibold">
-                ${(stats?.pendingValue || 0).toLocaleString()}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Main Content Tabs */}
-        <Tabs defaultValue="all" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="all" className="px-5 py-2.5 text-base gap-2">
-              All Requests
-              {openRequests.length > 0 && (
-                <Badge variant="secondary" className="ml-1">{openRequests.length}</Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="cash-manager" className="px-5 py-2.5 text-base gap-2">
-              Cash Manager
-              {cashManagerRequests.length > 0 && (
-                <Badge variant="secondary" className="ml-1">{cashManagerRequests.length}</Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="low-stock" className="px-5 py-2.5 text-base gap-2">
-              Low Stock
-              {lowStockItems.length > 0 && (
-                <Badge variant="destructive" className="ml-1">{lowStockItems.length}</Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="requests" className="px-5 py-2.5 text-base gap-2">
-              Restock
-              {lowStockItems.length > 0 && (
-                <Badge variant="secondary" className="ml-1">{lowStockItems.length}</Badge>
-              )}
-            </TabsTrigger>
-          </TabsList>
-
-          {/* All Requests Tab - Open requests grouped by source with Start Procurement */}
-          <TabsContent value="all">
-            <div className="space-y-6">
-              {/* Export Actions */}
-              {openRequests.length > 0 && (
-                <div className="flex justify-end">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm">
-                        <Download className="h-4 w-4 mr-2" />
-                        Export
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={exportAllRequestsToExcel} disabled={openRequests.length === 0}>
-                        <FileText className="h-4 w-4 mr-2" />
-                        Export to Excel
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={exportAllRequestsToPDF} disabled={openRequests.length === 0}>
-                        <FileDown className="h-4 w-4 mr-2" />
-                        Export to PDF
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              )}
-
-              {/* Selection Bar */}
-              {selectedRequestIds.size > 0 && (
-                <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                  <Badge variant="secondary" className="text-sm">
-                    {selectedRequestIds.size} selected
-                  </Badge>
-                  <Button size="sm" onClick={openBulkProcurementDialog}>
-                    <ShoppingBag className="h-4 w-4 mr-1" />
-                    Start Procurement for Selected
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setSelectedRequestIds(new Set())}>
-                    Clear Selection
-                  </Button>
-                </div>
-              )}
-
-              {/* Job Card Requests Section */}
-              {jobCardRequests.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <FileText className="h-5 w-5" />
-                      Job Card Requests
-                    </CardTitle>
-                    <CardDescription>
-                      Parts, external items, and services requested through job cards
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="overflow-x-auto">
-                      <Table className="min-w-[700px]">
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="w-10">
-                              <Checkbox
-                                checked={jobCardRequests.length > 0 && jobCardRequests.every(r => selectedRequestIds.has(r.id))}
-                                onCheckedChange={() => toggleAllInSection(jobCardRequests)}
-                              />
-                            </TableHead>
-                            <TableHead>Part</TableHead>
-                            <TableHead>Qty</TableHead>
-                            <TableHead>Job Card</TableHead>
-                            <TableHead>Requested</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead>Actions</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {jobCardRequests.map((request) => (
-                            <TableRow key={request.id} className={selectedRequestIds.has(request.id) ? "bg-blue-50/50 dark:bg-blue-950/10" : ""}>
-                              <TableCell>
-                                <Checkbox
-                                  checked={selectedRequestIds.has(request.id)}
-                                  onCheckedChange={() => toggleRequestSelection(request.id)}
-                                />
-                              </TableCell>
-                              <TableCell>
-                                <div>
-                                  <div className="font-medium">{request.part_name}</div>
-                                  {request.part_number && (
-                                    <div className="text-xs text-muted-foreground font-mono">
-                                      {request.part_number}
-                                    </div>
-                                  )}
-                                  {request.is_service ? (
-                                    <>
-                                      <Badge variant="outline" className="mt-1 text-[10px] px-1.5 py-0 border-purple-500 text-purple-600">
-                                        <Wrench className="h-3 w-3 mr-0.5" />
-                                        Service
-                                      </Badge>
-                                      {request.service_description && (
-                                        <div className="text-xs text-muted-foreground mt-1">
-                                          {request.service_description}
-                                        </div>
-                                      )}
-                                    </>
-                                  ) : !request.is_from_inventory && !request.inventory_id ? (
-                                    <>
-                                      <Badge variant="outline" className="mt-1 text-[10px] px-1.5 py-0 border-orange-500 text-orange-600">
-                                        <DollarSign className="h-3 w-3 mr-0.5" />
-                                        External
-                                      </Badge>
-                                      {request.vendor && (
-                                        <div className="text-xs text-muted-foreground mt-1">
-                                          Vendor: {request.vendor?.vendor_name || 'Unknown'}
-                                        </div>
-                                      )}
-                                    </>
-                                  ) : request.inventory_id && request.is_from_inventory ? (
-                                    request.notes?.includes('[OUT OF STOCK') ? (
-                                      <Badge variant="destructive" className="mt-1 text-[10px] px-1.5 py-0">
-                                        <AlertTriangle className="h-3 w-3 mr-0.5" />
-                                        Short — Needs Restock
-                                      </Badge>
-                                    ) : (
-                                      <Badge variant="outline" className="mt-1 text-[10px] px-1.5 py-0 border-green-500 text-green-600">
-                                        <Package className="h-3 w-3 mr-0.5" />
-                                        From Inventory
-                                      </Badge>
-                                    )
-                                  ) : null}
-                                </div>
-                              </TableCell>
-                              <TableCell className="font-mono">{request.quantity}</TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-1">
-                                  <FileText className="h-3 w-3 text-muted-foreground" />
-                                  <span className="font-mono text-sm">
-                                    {request.job_card?.job_number || "—"}
-                                  </span>
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-sm text-muted-foreground">
-                                {request.created_at ? formatDate(request.created_at) : "—"}
-                              </TableCell>
-                              <TableCell>{getStatusBadge(request.status)}</TableCell>
-                              <TableCell>
-                                <div className="flex gap-1">
-                                  <Button
-                                    size="sm"
-                                    onClick={() => openStartProcurementDialog(request)}
-                                  >
-                                    <ShoppingBag className="h-4 w-4 mr-1" />
-                                    Start Procurement
-                                  </Button>
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                        <MoreHorizontal className="h-4 w-4" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                      <DropdownMenuItem onClick={() => openDetailDialog(request)}>
-                                        <FileText className="h-4 w-4 mr-2" />
-                                        View Details
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem onClick={() => openEditDialog(request)}>
-                                        <Edit className="h-4 w-4 mr-2" />
-                                        Edit
-                                      </DropdownMenuItem>
-                                      <DropdownMenuSeparator />
-                                      <DropdownMenuItem onClick={() => openDeleteDialog(request)} className="text-red-600">
-                                        <Trash2 className="h-4 w-4 mr-2" />
-                                        Delete
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Low Stock / Restock Requests Section */}
-              {lowStockRequests.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <AlertTriangle className="h-5 w-5 text-orange-500" />
-                      Low Stock / Restock Requests
-                    </CardTitle>
-                    <CardDescription>
-                      Replenishment requests for inventory items below minimum levels
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="overflow-x-auto">
-                      <Table className="min-w-[700px]">
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="w-10">
-                              <Checkbox
-                                checked={lowStockRequests.length > 0 && lowStockRequests.every(r => selectedRequestIds.has(r.id))}
-                                onCheckedChange={() => toggleAllInSection(lowStockRequests)}
-                              />
-                            </TableHead>
-                            <TableHead>Part</TableHead>
-                            <TableHead>Qty</TableHead>
-                            <TableHead>Inventory Item</TableHead>
-                            <TableHead>Requested</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead>Actions</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {lowStockRequests.map((request) => (
-                            <TableRow key={request.id} className={selectedRequestIds.has(request.id) ? "bg-blue-50/50 dark:bg-blue-950/10" : ""}>
-                              <TableCell>
-                                <Checkbox
-                                  checked={selectedRequestIds.has(request.id)}
-                                  onCheckedChange={() => toggleRequestSelection(request.id)}
-                                />
-                              </TableCell>
-                              <TableCell>
-                                <div>
-                                  <div className="font-medium">{request.part_name}</div>
-                                  {request.part_number && (
-                                    <div className="text-xs text-muted-foreground font-mono">
-                                      {request.part_number}
-                                    </div>
-                                  )}
-                                </div>
-                              </TableCell>
-                              <TableCell className="font-mono">{request.quantity}</TableCell>
-                              <TableCell>
-                                <Badge variant="outline" className="text-xs">
-                                  <Package className="h-3 w-3 mr-1" />
-                                  {request.inventory?.name || "Inventory"}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="text-sm text-muted-foreground">
-                                {request.created_at ? formatDate(request.created_at) : "—"}
-                              </TableCell>
-                              <TableCell>{getStatusBadge(request.status)}</TableCell>
-                              <TableCell>
-                                <div className="flex gap-1">
-                                  <Button
-                                    size="sm"
-                                    onClick={() => openStartProcurementDialog(request)}
-                                  >
-                                    <ShoppingBag className="h-4 w-4 mr-1" />
-                                    Start Procurement
-                                  </Button>
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                        <MoreHorizontal className="h-4 w-4" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                      <DropdownMenuItem onClick={() => openDetailDialog(request)}>
-                                        <FileText className="h-4 w-4 mr-2" />
-                                        View Details
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem onClick={() => openEditDialog(request)}>
-                                        <Edit className="h-4 w-4 mr-2" />
-                                        Edit
-                                      </DropdownMenuItem>
-                                      <DropdownMenuSeparator />
-                                      <DropdownMenuItem onClick={() => openDeleteDialog(request)} className="text-red-600">
-                                        <Trash2 className="h-4 w-4 mr-2" />
-                                        Delete
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Manual Requests Section */}
-              {manualRequests.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Package className="h-5 w-5" />
-                      Manual Requests
-                    </CardTitle>
-                    <CardDescription>
-                      Procurement requests created directly
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="overflow-x-auto">
-                      <Table className="min-w-[700px]">
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="w-10">
-                              <Checkbox
-                                checked={manualRequests.length > 0 && manualRequests.every(r => selectedRequestIds.has(r.id))}
-                                onCheckedChange={() => toggleAllInSection(manualRequests)}
-                              />
-                            </TableHead>
-                            <TableHead>Part</TableHead>
-                            <TableHead>Qty</TableHead>
-                            <TableHead>Price</TableHead>
-                            <TableHead>Requested By</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead>Actions</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {manualRequests.map((request) => (
-                            <TableRow key={request.id} className={selectedRequestIds.has(request.id) ? "bg-blue-50/50 dark:bg-blue-950/10" : ""}>
-                              <TableCell>
-                                <Checkbox
-                                  checked={selectedRequestIds.has(request.id)}
-                                  onCheckedChange={() => toggleRequestSelection(request.id)}
-                                />
-                              </TableCell>
-                              <TableCell>
-                                <div>
-                                  <div className="font-medium">{request.part_name}</div>
-                                  {request.part_number && (
-                                    <div className="text-xs text-muted-foreground font-mono">
-                                      {request.part_number}
-                                    </div>
-                                  )}
-                                </div>
-                              </TableCell>
-                              <TableCell className="font-mono">{request.quantity}</TableCell>
-                              <TableCell className="font-mono">
-                                {request.total_price
-                                  ? `$${request.total_price.toLocaleString()}`
-                                  : "—"
-                                }
-                              </TableCell>
-                              <TableCell>{request.requested_by || "—"}</TableCell>
-                              <TableCell>{getStatusBadge(request.status)}</TableCell>
-                              <TableCell>
-                                <div className="flex gap-1">
-                                  <Button
-                                    size="sm"
-                                    onClick={() => openStartProcurementDialog(request)}
-                                  >
-                                    <ShoppingBag className="h-4 w-4 mr-1" />
-                                    Start Procurement
-                                  </Button>
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                        <MoreHorizontal className="h-4 w-4" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                      <DropdownMenuItem onClick={() => openDetailDialog(request)}>
-                                        <FileText className="h-4 w-4 mr-2" />
-                                        View Details
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem onClick={() => openEditDialog(request)}>
-                                        <Edit className="h-4 w-4 mr-2" />
-                                        Edit
-                                      </DropdownMenuItem>
-                                      <DropdownMenuSeparator />
-                                      <DropdownMenuItem onClick={() => openDeleteDialog(request)} className="text-red-600">
-                                        <Trash2 className="h-4 w-4 mr-2" />
-                                        Delete
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {openRequests.length === 0 && (
-                <Card>
-                  <CardContent className="flex flex-col items-center justify-center py-12">
-                    <CheckCircle className="h-12 w-12 text-green-500 mb-4" />
-                    <p className="text-lg font-medium">All caught up!</p>
-                    <p className="text-muted-foreground">No open procurement requests</p>
-                  </CardContent>
-                </Card>
-              )}
+          <div className="space-y-6">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <Button onClick={() => setCreateDialogOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                New Request
+              </Button>
             </div>
-          </TabsContent>
 
-          {/* Cash Manager Tab - Procurement workflow tracking */}
-          <TabsContent value="cash-manager">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      <CreditCard className="h-5 w-5" />
-                      Cash Manager — Procurement Workflow
-                    </CardTitle>
-                    <CardDescription>
-                      Track procurement through IR → Cash Manager Approval → Order → Receive → Allocate
-                    </CardDescription>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Select
-                      value={statusFilter}
-                      onValueChange={setStatusFilter}
-                    >
-                      <SelectTrigger className="w-[150px]">
-                        <SelectValue placeholder="Filter status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Statuses</SelectItem>
-                        <SelectItem value="pending">Pending IR</SelectItem>
-                        <SelectItem value="approved">Approved</SelectItem>
-                        <SelectItem value="ordered">Ordered</SelectItem>
-                        <SelectItem value="received">Received</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Select
-                      value={urgencyFilter}
-                      onValueChange={setUrgencyFilter}
-                    >
-                      <SelectTrigger className="w-[150px]">
-                        <SelectValue placeholder="Filter urgency" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Urgencies</SelectItem>
-                        <SelectItem value="urgent">Urgent</SelectItem>
-                        <SelectItem value="1-week">1 Week</SelectItem>
-                        <SelectItem value="2-weeks">2 Weeks</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="outline" size="sm" disabled={filteredCashManager.length === 0}>
-                          <Download className="h-4 w-4 mr-2" />
-                          Export
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={exportCashManagerToExcel} disabled={filteredCashManager.length === 0}>
-                          <FileText className="h-4 w-4 mr-2" />
-                          Export to Excel
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={exportCashManagerToPDF} disabled={filteredCashManager.length === 0}>
-                          <FileDown className="h-4 w-4 mr-2" />
-                          Export to PDF
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem 
-                          onClick={exportUrgentIRsToExcel} 
-                          disabled={!cashManagerRequests.some(r => r.urgency_level === 'urgent')}
-                          className="text-red-600"
-                        >
-                          <AlertTriangle className="h-4 w-4 mr-2" />
-                          Export Urgent IRs Only
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <ScrollArea className="h-[600px]">
-                  <Table className="min-w-[900px]">
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Part</TableHead>
-                        <TableHead>IR #</TableHead>
-                        <TableHead>Qty</TableHead>
-                        <TableHead>Source</TableHead>
-                        <TableHead>Workflow Progress</TableHead>
-                        <TableHead>Lead Time</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="w-[180px]">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {Array.from(irGroups.entries()).map(([irKey, items]) => {
-                        const isGroup = items.length > 1;
-                        const isExpanded = expandedIRs.has(irKey);
-                        const groupStep = isGroup ? getGroupWorkflowStep(items) : null;
-                        const totalQty = items.reduce((sum, r) => sum + r.quantity, 0);
+            {/* Stats Cards */}
+            <div className="grid gap-4 md:grid-cols-6">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Pending</CardTitle>
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-semibold">{stats?.pending || 0}</div>
+                </CardContent>
+              </Card>
 
-                        if (!isGroup) {
-                          // Single-item IR – render as a normal row
-                          const request = items[0];
-                          return (
-                            <TableRow key={request.id} className="cursor-pointer hover:bg-muted/50">
-                              <TableCell onClick={() => openDetailDialog(request)}>
-                                <div>
-                                  <div className="font-medium">{request.part_name}</div>
-                                  {request.part_number && (
-                                    <div className="text-xs text-muted-foreground font-mono">{request.part_number}</div>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">IR Pending</CardTitle>
+                  <BookOpen className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-semibold">{stats?.sage_pending || 0}</div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Cash Mgr Pending</CardTitle>
+                  <CreditCard className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-semibold">{stats?.cash_manager_pending || 0}</div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Ordered</CardTitle>
+                  <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-semibold">{stats?.ordered || 0}</div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Received</CardTitle>
+                  <CheckCircle className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-semibold">{stats?.received || 0}</div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Pending Value</CardTitle>
+                  <DollarSign className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-semibold">
+                    ${(stats?.pendingValue || 0).toLocaleString()}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Main Content Tabs */}
+            <Tabs defaultValue="all" className="space-y-4">
+              <TabsList>
+                <TabsTrigger value="all" className="px-5 py-2.5 text-base gap-2">
+                  All Requests
+                  {openRequests.length > 0 && (
+                    <Badge variant="secondary" className="ml-1">{openRequests.length}</Badge>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="cash-manager" className="px-5 py-2.5 text-base gap-2">
+                  Cash Manager
+                  {cashManagerRequests.length > 0 && (
+                    <Badge variant="secondary" className="ml-1">{cashManagerRequests.length}</Badge>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="low-stock" className="px-5 py-2.5 text-base gap-2">
+                  Low Stock
+                  {lowStockItems.length > 0 && (
+                    <Badge variant="destructive" className="ml-1">{lowStockItems.length}</Badge>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="requests" className="px-5 py-2.5 text-base gap-2">
+                  Restock
+                  {lowStockItems.length > 0 && (
+                    <Badge variant="secondary" className="ml-1">{lowStockItems.length}</Badge>
+                  )}
+                </TabsTrigger>
+              </TabsList>
+
+              {/* All Requests Tab - Open requests grouped by source with Start Procurement */}
+              <TabsContent value="all">
+                <div className="space-y-6">
+                  {/* Export Actions */}
+                  {openRequests.length > 0 && (
+                    <div className="flex justify-end">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="sm">
+                            <Download className="h-4 w-4 mr-2" />
+                            Export
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={exportAllRequestsToExcel} disabled={openRequests.length === 0}>
+                            <FileText className="h-4 w-4 mr-2" />
+                            Export to Excel
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={exportAllRequestsToPDF} disabled={openRequests.length === 0}>
+                            <FileDown className="h-4 w-4 mr-2" />
+                            Export to PDF
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  )}
+
+                  {/* ========== NEW SECTION: Unallocated Fulfilled Items ========== */}
+                  {allRequests.filter(r =>
+                    r.status === "fulfilled" &&
+                    r.is_from_inventory &&
+                    r.inventory_id &&
+                    !r.allocated_to_job_card
+                  ).length > 0 && (
+                      <Card className="border-blue-200 bg-blue-50/30">
+                        <CardHeader className="pb-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Package className="h-5 w-5 text-blue-600" />
+                              <CardTitle className="text-lg">Items Awaiting Allocation</CardTitle>
+                            </div>
+                            <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-300">
+                              {allRequests.filter(r =>
+                                r.status === "fulfilled" &&
+                                r.is_from_inventory &&
+                                r.inventory_id &&
+                                !r.allocated_to_job_card
+                              ).length} items
+                            </Badge>
+                          </div>
+                          <CardDescription>
+                            These parts were fulfilled from inventory but not yet allocated to a job card.
+                            Click "Allocate" to complete the process and remove them from procurement views.
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="overflow-x-auto">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Part</TableHead>
+                                  <TableHead>Qty</TableHead>
+                                  <TableHead>Job Card</TableHead>
+                                  <TableHead>Date</TableHead>
+                                  <TableHead>Status</TableHead>
+                                  <TableHead>Actions</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {allRequests
+                                  .filter(r =>
+                                    r.status === "fulfilled" &&
+                                    r.is_from_inventory &&
+                                    r.inventory_id &&
+                                    !r.allocated_to_job_card
+                                  )
+                                  .map((request) => (
+                                    <TableRow key={request.id} className="bg-blue-50/50">
+                                      <TableCell>
+                                        <div>
+                                          <div className="font-medium">{request.part_name}</div>
+                                          {request.part_number && (
+                                            <div className="text-xs text-muted-foreground font-mono">
+                                              {request.part_number}
+                                            </div>
+                                          )}
+                                          {request.inventory && (
+                                            <Badge variant="outline" className="mt-1 text-[10px] px-1.5 py-0 border-blue-500 text-blue-600">
+                                              <Package className="h-3 w-3 mr-0.5" />
+                                              {request.inventory.name}
+                                            </Badge>
+                                          )}
+                                        </div>
+                                      </TableCell>
+                                      <TableCell className="font-mono">{request.quantity}</TableCell>
+                                      <TableCell>
+                                        <div className="flex items-center gap-1">
+                                          <FileText className="h-3 w-3 text-muted-foreground" />
+                                          <span className="font-mono text-sm">
+                                            {request.job_card?.job_number || "—"}
+                                          </span>
+                                        </div>
+                                      </TableCell>
+                                      <TableCell className="text-sm text-muted-foreground">
+                                        {request.created_at ? formatDate(request.created_at) : "—"}
+                                      </TableCell>
+                                      <TableCell>
+                                        <Badge className="bg-yellow-500">
+                                          <Clock className="h-3 w-3 mr-1" />
+                                          Needs Allocation
+                                        </Badge>
+                                      </TableCell>
+                                      <TableCell>
+                                        <div className="flex gap-2">
+                                          <Button
+                                            size="sm"
+                                            className="bg-green-600 hover:bg-green-700"
+                                            onClick={() => handleAllocateToJobCard(request)}
+                                            disabled={allocateToJobCard.isPending}
+                                          >
+                                            {allocateToJobCard.isPending ? (
+                                              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                                            ) : (
+                                              <CheckCircle className="h-4 w-4 mr-1" />
+                                            )}
+                                            Allocate
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => openDetailDialog(request)}
+                                          >
+                                            <FileText className="h-4 w-4 mr-1" />
+                                            Details
+                                          </Button>
+                                        </div>
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+
+                          {/* Bulk Action Button */}
+                          {allRequests.filter(r =>
+                            r.status === "fulfilled" &&
+                            r.is_from_inventory &&
+                            r.inventory_id &&
+                            !r.allocated_to_job_card
+                          ).length > 1 && (
+                              <div className="mt-4 flex justify-end">
+                                <Button
+                                  variant="outline"
+                                  className="border-green-600 text-green-600 hover:bg-green-50"
+                                  onClick={async () => {
+                                    const unallocated = allRequests.filter(r =>
+                                      r.status === "fulfilled" &&
+                                      r.is_from_inventory &&
+                                      r.inventory_id &&
+                                      !r.allocated_to_job_card
+                                    );
+
+                                    // Show confirmation
+                                    if (confirm(`Allocate all ${unallocated.length} items to their respective job cards?`)) {
+                                      for (const request of unallocated) {
+                                        await allocateToJobCard.mutateAsync(request.id);
+                                      }
+                                      toast({
+                                        title: "Success",
+                                        description: `Allocated ${unallocated.length} items`,
+                                      });
+                                    }
+                                  }}
+                                  disabled={allocateToJobCard.isPending}
+                                >
+                                  {allocateToJobCard.isPending ? (
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  ) : (
+                                    <CheckCircle className="h-4 w-4 mr-2" />
                                   )}
-                                  {request.vendor?.vendor_name && (
-                                    <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                                      <Store className="h-3 w-3" />
-                                      {request.vendor.vendor_name}
-                                    </div>
-                                  )}
-                                  {request.urgency_level && (
-                                    <div className="mt-1">
-                                      {getUrgencyBadge(request.urgency_level)}
-                                    </div>
-                                  )}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <span className="font-mono text-sm">{request.ir_number || request.sage_requisition_number || "—"}</span>
-                              </TableCell>
-                              <TableCell className="font-mono">{request.quantity}</TableCell>
-                              <TableCell>
-                                {request.job_card_id ? (
-                                  <Badge variant="outline" className="text-xs">
-                                    <FileText className="h-3 w-3 mr-1" />
-                                    {request.job_card?.job_number || "Job Card"}
-                                  </Badge>
-                                ) : request.inventory_id ? (
-                                  <Badge variant="outline" className="text-xs">
-                                    <Package className="h-3 w-3 mr-1" />
-                                    Restock
-                                  </Badge>
-                                ) : (
-                                  <Badge variant="secondary" className="text-xs">Manual</Badge>
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-1">
-                                  <Tooltip>
-                                    <TooltipTrigger>
-                                      <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium", (request.ir_number || request.sage_requisition_date) ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400")}>
-                                        {(request.ir_number || request.sage_requisition_date) ? <Check className="h-3 w-3" /> : "1"}
-                                      </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent><p className="font-semibold">IR Created</p>{request.ir_number ? <p>✓ IR: {request.ir_number}</p> : <p className="text-muted-foreground">Not yet submitted</p>}</TooltipContent>
-                                  </Tooltip>
-                                  <div className="w-4 h-0.5 bg-gray-200" />
-                                  <Tooltip>
-                                    <TooltipTrigger>
-                                      <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium", request.cash_manager_approval_date ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400")}>
-                                        {request.cash_manager_approval_date ? <Check className="h-3 w-3" /> : "2"}
-                                      </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent><p className="font-semibold">Cash Manager</p>{request.cash_manager_approval_date ? <><p>✓ {formatDate(request.cash_manager_approval_date)}</p><p>Ref: {request.cash_manager_reference}</p></> : <p className="text-muted-foreground">Awaiting approval</p>}</TooltipContent>
-                                  </Tooltip>
-                                  <div className="w-4 h-0.5 bg-gray-200" />
-                                  <Tooltip>
-                                    <TooltipTrigger>
-                                      <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium", request.ordered_at ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400")}>
-                                        {request.ordered_at ? <Check className="h-3 w-3" /> : "3"}
-                                      </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent><p className="font-semibold">Ordered</p>{request.ordered_at ? <><p>✓ {formatDate(request.ordered_at)}</p><p>Vendor: {request.vendor?.vendor_name || "Unknown"}</p></> : <p className="text-muted-foreground">Not yet ordered</p>}</TooltipContent>
-                                  </Tooltip>
-                                  <div className="w-4 h-0.5 bg-gray-200" />
-                                  <Tooltip>
-                                    <TooltipTrigger>
-                                      <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium", request.received_date ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400")}>
-                                        {request.received_date ? <Check className="h-3 w-3" /> : "4"}
-                                      </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent><p className="font-semibold">Received</p>{request.received_date ? <><p>✓ {formatDate(request.received_date)}</p><p>Qty: {request.received_quantity ?? request.quantity}</p></> : <p className="text-muted-foreground">Awaiting delivery</p>}</TooltipContent>
-                                  </Tooltip>
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                {request.received_date ? (
-                                  <Tooltip>
-                                    <TooltipTrigger>
-                                      <Badge variant="outline" className={cn("text-xs", (getLeadTime(request)?.days ?? 0) <= 3 && "border-green-500 text-green-600", (getLeadTime(request)?.days ?? 0) > 3 && (getLeadTime(request)?.days ?? 0) <= 7 && "border-yellow-500 text-yellow-600", (getLeadTime(request)?.days ?? 0) > 7 && "border-red-500 text-red-600")}>
-                                        <Clock className="h-3 w-3 mr-1" />
-                                        {getLeadTime(request)?.formatted}
-                                      </Badge>
-                                    </TooltipTrigger>
-                                    <TooltipContent><p className="font-semibold">Lead Time</p><p>Total: {getTotalProcurementTime(request)?.formatted}</p></TooltipContent>
-                                  </Tooltip>
-                                ) : request.ordered_at ? (
-                                  <Badge variant="outline" className="text-xs border-blue-500 text-blue-600">
-                                    <Clock className="h-3 w-3 mr-1 animate-pulse" />
-                                    {calculateLeadTime(request.ordered_at, new Date().toISOString())?.formatted || 'Pending'}
-                                  </Badge>
-                                ) : (
-                                  <span className="text-xs text-muted-foreground">—</span>
-                                )}
-                              </TableCell>
-                              <TableCell>{getStatusBadge(request.status)}</TableCell>
-                              <TableCell>
-                                <div className="flex gap-1 flex-wrap">
-                                  {(request.ir_number || request.sage_requisition_date) && !request.cash_manager_approval_date && (
-                                    <Button size="sm" variant="outline" onClick={() => openCashManagerDialog(request)}><CreditCard className="h-3 w-3 mr-1" />Approve</Button>
-                                  )}
-                                  {request.cash_manager_approval_date && !request.ordered_at && (
-                                    <Button size="sm" variant="outline" onClick={() => openOrderDialog(request)}><ShoppingCart className="h-3 w-3 mr-1" />Order</Button>
-                                  )}
-                                  {request.ordered_at && !request.received_date && (
-                                    <Button size="sm" variant="outline" onClick={() => openReceiveDialog(request)}><Truck className="h-3 w-3 mr-1" />Receive</Button>
-                                  )}
-                                  {request.received_date && request.job_card_id && !request.allocated_to_job_card && (
-                                    <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => handleAllocateToJobCard(request)} disabled={allocateToJobCard.isPending}><CheckCircle className="h-3 w-3 mr-1" />Allocate</Button>
-                                  )}
-                                  {request.allocated_to_job_card && (
-                                    <Badge className="bg-green-600"><CheckCircle className="h-3 w-3 mr-1" />Fulfilled</Badge>
-                                  )}
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                      <DropdownMenuItem onClick={() => openDetailDialog(request)}><FileText className="h-4 w-4 mr-2" />View Details</DropdownMenuItem>
-                                      <DropdownMenuItem onClick={() => openEditDialog(request)}><Edit className="h-4 w-4 mr-2" />Edit</DropdownMenuItem>
-                                      {!request.sage_requisition_date && !request.ir_number && (
-                                        <><DropdownMenuSeparator /><DropdownMenuItem onClick={() => openSageDialog(request)}><BookOpen className="h-4 w-4 mr-2" />Add IR Number</DropdownMenuItem></>
+                                  Allocate All ({allRequests.filter(r =>
+                                    r.status === "fulfilled" &&
+                                    r.is_from_inventory &&
+                                    r.inventory_id &&
+                                    !r.allocated_to_job_card
+                                  ).length} items)
+                                </Button>
+                              </div>
+                            )}
+                        </CardContent>
+                      </Card>
+                    )}
+                  {/* ========== END NEW SECTION ========== */}
+
+                  {/* Selection Bar */}
+                  {selectedRequestIds.size > 0 && (
+                    <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                      <Badge variant="secondary" className="text-sm">
+                        {selectedRequestIds.size} selected
+                      </Badge>
+                      <Button size="sm" onClick={openBulkProcurementDialog}>
+                        <ShoppingBag className="h-4 w-4 mr-1" />
+                        Start Procurement for Selected
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setSelectedRequestIds(new Set())}>
+                        Clear Selection
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Job Card Requests Section */}
+                  {jobCardRequests.length > 0 && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <FileText className="h-5 w-5" />
+                          Job Card Requests
+                        </CardTitle>
+                        <CardDescription>
+                          Parts, external items, and services requested through job cards
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="overflow-x-auto">
+                          <Table className="min-w-[700px]">
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead className="w-10">
+                                  <Checkbox
+                                    checked={jobCardRequests.length > 0 && jobCardRequests.every(r => selectedRequestIds.has(r.id))}
+                                    onCheckedChange={() => toggleAllInSection(jobCardRequests)}
+                                  />
+                                </TableHead>
+                                <TableHead>Part</TableHead>
+                                <TableHead>Qty</TableHead>
+                                <TableHead>Job Card</TableHead>
+                                <TableHead>Requested</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead>Actions</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {jobCardRequests.map((request) => (
+                                <TableRow key={request.id} className={selectedRequestIds.has(request.id) ? "bg-blue-50/50 dark:bg-blue-950/10" : ""}>
+                                  <TableCell>
+                                    <Checkbox
+                                      checked={selectedRequestIds.has(request.id)}
+                                      onCheckedChange={() => toggleRequestSelection(request.id)}
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <div>
+                                      <div className="font-medium">{request.part_name}</div>
+                                      {request.part_number && (
+                                        <div className="text-xs text-muted-foreground font-mono">
+                                          {request.part_number}
+                                        </div>
                                       )}
-                                      <DropdownMenuSeparator />
-                                      <DropdownMenuItem onClick={() => openDeleteDialog(request)} className="text-red-600"><Trash2 className="h-4 w-4 mr-2" />Delete</DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        }
-
-                        // Multi-item IR group – collapsible header + child rows
-                        return (
-                          <React.Fragment key={irKey}>
-                            {/* Group Header Row */}
-                            <TableRow
-                              className="cursor-pointer bg-muted/30 hover:bg-muted/50 border-b-0"
-                              onClick={() => toggleIR(irKey)}
-                            >
-                              <TableCell>
-                                <div className="flex items-center gap-2">
-                                  {isExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-                                  <div>
-                                    <div className="font-semibold">{items.length} items</div>
-                                    <div className="text-xs text-muted-foreground">
-                                      {items.map(r => r.part_name).join(", ").substring(0, 60)}
-                                      {items.map(r => r.part_name).join(", ").length > 60 ? "…" : ""}
+                                      {request.is_service ? (
+                                        <>
+                                          <Badge variant="outline" className="mt-1 text-[10px] px-1.5 py-0 border-purple-500 text-purple-600">
+                                            <Wrench className="h-3 w-3 mr-0.5" />
+                                            Service
+                                          </Badge>
+                                          {request.service_description && (
+                                            <div className="text-xs text-muted-foreground mt-1">
+                                              {request.service_description}
+                                            </div>
+                                          )}
+                                        </>
+                                      ) : !request.is_from_inventory && !request.inventory_id ? (
+                                        <>
+                                          <Badge variant="outline" className="mt-1 text-[10px] px-1.5 py-0 border-orange-500 text-orange-600">
+                                            <DollarSign className="h-3 w-3 mr-0.5" />
+                                            External
+                                          </Badge>
+                                          {request.vendor && (
+                                            <div className="text-xs text-muted-foreground mt-1">
+                                              Vendor: {request.vendor?.vendor_name || 'Unknown'}
+                                            </div>
+                                          )}
+                                        </>
+                                      ) : request.inventory_id && request.is_from_inventory ? (
+                                        request.notes?.includes('[OUT OF STOCK') ? (
+                                          <Badge variant="destructive" className="mt-1 text-[10px] px-1.5 py-0">
+                                            <AlertTriangle className="h-3 w-3 mr-0.5" />
+                                            Short — Needs Restock
+                                          </Badge>
+                                        ) : (
+                                          <Badge variant="outline" className="mt-1 text-[10px] px-1.5 py-0 border-green-500 text-green-600">
+                                            <Package className="h-3 w-3 mr-0.5" />
+                                            From Inventory
+                                          </Badge>
+                                        )
+                                      ) : null}
                                     </div>
-                                  </div>
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <span className="font-mono text-sm font-semibold">{irKey.startsWith("ungrouped-") ? "—" : irKey}</span>
-                              </TableCell>
-                              <TableCell className="font-mono font-semibold">{totalQty}</TableCell>
-                              <TableCell>
-                                <Badge variant="outline" className="text-xs">
-                                  <Package className="h-3 w-3 mr-1" />
-                                  {items.length} items
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant={groupStep!.variant}>{groupStep!.label}</Badge>
-                              </TableCell>
-                              <TableCell>—</TableCell>
-                              <TableCell>
-                                <Badge variant={groupStep!.variant}>{groupStep!.label}</Badge>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex gap-1 flex-wrap">
-                                  {/* Group-level actions: show if ANY item needs the step */}
-                                  {items.some(r => (r.ir_number || r.sage_requisition_date) && !r.cash_manager_approval_date) && (
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); toggleIR(irKey); }}>
-                                          <CreditCard className="h-3 w-3 mr-1" />Approve
-                                        </Button>
-                                      </TooltipTrigger>
-                                      <TooltipContent>Expand to approve individual items</TooltipContent>
-                                    </Tooltip>
-                                  )}
-                                  {items.some(r => r.cash_manager_approval_date && !r.ordered_at) && (
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); toggleIR(irKey); }}>
-                                          <ShoppingCart className="h-3 w-3 mr-1" />Order
-                                        </Button>
-                                      </TooltipTrigger>
-                                      <TooltipContent>Expand to place orders</TooltipContent>
-                                    </Tooltip>
-                                  )}
-                                  {items.every(r => r.allocated_to_job_card) && (
-                                    <Badge className="bg-green-600"><CheckCircle className="h-3 w-3 mr-1" />All Fulfilled</Badge>
-                                  )}
-                                </div>
-                              </TableCell>
-                            </TableRow>
+                                  </TableCell>
+                                  <TableCell className="font-mono">{request.quantity}</TableCell>
+                                  <TableCell>
+                                    <div className="flex items-center gap-1">
+                                      <FileText className="h-3 w-3 text-muted-foreground" />
+                                      <span className="font-mono text-sm">
+                                        {request.job_card?.job_number || "—"}
+                                      </span>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="text-sm text-muted-foreground">
+                                    {request.created_at ? formatDate(request.created_at) : "—"}
+                                  </TableCell>
+                                  <TableCell>{getStatusBadge(request.status)}</TableCell>
+                                  <TableCell>
+                                    <div className="flex gap-1">
+                                      <Button
+                                        size="sm"
+                                        onClick={() => openStartProcurementDialog(request)}
+                                      >
+                                        <ShoppingBag className="h-4 w-4 mr-1" />
+                                        Start Procurement
+                                      </Button>
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                            <MoreHorizontal className="h-4 w-4" />
+                                          </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                          <DropdownMenuItem onClick={() => openDetailDialog(request)}>
+                                            <FileText className="h-4 w-4 mr-2" />
+                                            View Details
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem onClick={() => openEditDialog(request)}>
+                                            <Edit className="h-4 w-4 mr-2" />
+                                            Edit
+                                          </DropdownMenuItem>
+                                          <DropdownMenuSeparator />
+                                          <DropdownMenuItem onClick={() => openDeleteDialog(request)} className="text-red-600">
+                                            <Trash2 className="h-4 w-4 mr-2" />
+                                            Delete
+                                          </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
 
-                            {/* Expanded child rows */}
-                            {isExpanded && items.map((request) => (
-                              <TableRow key={request.id} className="bg-muted/10 hover:bg-muted/20">
-                                <TableCell onClick={() => openDetailDialog(request)} className="cursor-pointer">
-                                  <div className="pl-6">
-                                    <div className="font-medium">{request.part_name}</div>
-                                    {request.part_number && (
-                                      <div className="text-xs text-muted-foreground font-mono">{request.part_number}</div>
-                                    )}
-                                    {request.vendor?.vendor_name && (
-                                      <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                                        <Store className="h-3 w-3" />
-                                        {request.vendor.vendor_name}
-                                      </div>
-                                    )}
-                                    {request.urgency_level && (
-                                      <div className="mt-1">
-                                        {getUrgencyBadge(request.urgency_level)}
-                                      </div>
-                                    )}
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <span className="text-xs text-muted-foreground">—</span>
-                                </TableCell>
-                                <TableCell className="font-mono">{request.quantity}</TableCell>
-                                <TableCell>
-                                  {request.job_card_id ? (
-                                    <Badge variant="outline" className="text-xs">
-                                      <FileText className="h-3 w-3 mr-1" />
-                                      {request.job_card?.job_number || "Job Card"}
-                                    </Badge>
-                                  ) : request.inventory_id ? (
+                  {/* Low Stock / Restock Requests Section */}
+                  {lowStockRequests.length > 0 && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <AlertTriangle className="h-5 w-5 text-orange-500" />
+                          Low Stock / Restock Requests
+                        </CardTitle>
+                        <CardDescription>
+                          Replenishment requests for inventory items below minimum levels
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="overflow-x-auto">
+                          <Table className="min-w-[700px]">
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead className="w-10">
+                                  <Checkbox
+                                    checked={lowStockRequests.length > 0 && lowStockRequests.every(r => selectedRequestIds.has(r.id))}
+                                    onCheckedChange={() => toggleAllInSection(lowStockRequests)}
+                                  />
+                                </TableHead>
+                                <TableHead>Part</TableHead>
+                                <TableHead>Qty</TableHead>
+                                <TableHead>Inventory Item</TableHead>
+                                <TableHead>Requested</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead>Actions</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {lowStockRequests.map((request) => (
+                                <TableRow key={request.id} className={selectedRequestIds.has(request.id) ? "bg-blue-50/50 dark:bg-blue-950/10" : ""}>
+                                  <TableCell>
+                                    <Checkbox
+                                      checked={selectedRequestIds.has(request.id)}
+                                      onCheckedChange={() => toggleRequestSelection(request.id)}
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <div>
+                                      <div className="font-medium">{request.part_name}</div>
+                                      {request.part_number && (
+                                        <div className="text-xs text-muted-foreground font-mono">
+                                          {request.part_number}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="font-mono">{request.quantity}</TableCell>
+                                  <TableCell>
                                     <Badge variant="outline" className="text-xs">
                                       <Package className="h-3 w-3 mr-1" />
-                                      Restock
+                                      {request.inventory?.name || "Inventory"}
                                     </Badge>
-                                  ) : (
-                                    <Badge variant="secondary" className="text-xs">Manual</Badge>
-                                  )}
-                                </TableCell>
+                                  </TableCell>
+                                  <TableCell className="text-sm text-muted-foreground">
+                                    {request.created_at ? formatDate(request.created_at) : "—"}
+                                  </TableCell>
+                                  <TableCell>{getStatusBadge(request.status)}</TableCell>
+                                  <TableCell>
+                                    <div className="flex gap-1">
+                                      <Button
+                                        size="sm"
+                                        onClick={() => openStartProcurementDialog(request)}
+                                      >
+                                        <ShoppingBag className="h-4 w-4 mr-1" />
+                                        Start Procurement
+                                      </Button>
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                            <MoreHorizontal className="h-4 w-4" />
+                                          </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                          <DropdownMenuItem onClick={() => openDetailDialog(request)}>
+                                            <FileText className="h-4 w-4 mr-2" />
+                                            View Details
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem onClick={() => openEditDialog(request)}>
+                                            <Edit className="h-4 w-4 mr-2" />
+                                            Edit
+                                          </DropdownMenuItem>
+                                          <DropdownMenuSeparator />
+                                          <DropdownMenuItem onClick={() => openDeleteDialog(request)} className="text-red-600">
+                                            <Trash2 className="h-4 w-4 mr-2" />
+                                            Delete
+                                          </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Manual Requests Section */}
+                  {manualRequests.length > 0 && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <Package className="h-5 w-5" />
+                          Manual Requests
+                        </CardTitle>
+                        <CardDescription>
+                          Procurement requests created directly
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="overflow-x-auto">
+                          <Table className="min-w-[700px]">
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead className="w-10">
+                                  <Checkbox
+                                    checked={manualRequests.length > 0 && manualRequests.every(r => selectedRequestIds.has(r.id))}
+                                    onCheckedChange={() => toggleAllInSection(manualRequests)}
+                                  />
+                                </TableHead>
+                                <TableHead>Part</TableHead>
+                                <TableHead>Qty</TableHead>
+                                <TableHead>Price</TableHead>
+                                <TableHead>Requested By</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead>Actions</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {manualRequests.map((request) => (
+                                <TableRow key={request.id} className={selectedRequestIds.has(request.id) ? "bg-blue-50/50 dark:bg-blue-950/10" : ""}>
+                                  <TableCell>
+                                    <Checkbox
+                                      checked={selectedRequestIds.has(request.id)}
+                                      onCheckedChange={() => toggleRequestSelection(request.id)}
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <div>
+                                      <div className="font-medium">{request.part_name}</div>
+                                      {request.part_number && (
+                                        <div className="text-xs text-muted-foreground font-mono">
+                                          {request.part_number}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="font-mono">{request.quantity}</TableCell>
+                                  <TableCell className="font-mono">
+                                    {request.total_price
+                                      ? `$${request.total_price.toLocaleString()}`
+                                      : "—"
+                                    }
+                                  </TableCell>
+                                  <TableCell>{request.requested_by || "—"}</TableCell>
+                                  <TableCell>{getStatusBadge(request.status)}</TableCell>
+                                  <TableCell>
+                                    <div className="flex gap-1">
+                                      <Button
+                                        size="sm"
+                                        onClick={() => openStartProcurementDialog(request)}
+                                      >
+                                        <ShoppingBag className="h-4 w-4 mr-1" />
+                                        Start Procurement
+                                      </Button>
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                            <MoreHorizontal className="h-4 w-4" />
+                                          </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                          <DropdownMenuItem onClick={() => openDetailDialog(request)}>
+                                            <FileText className="h-4 w-4 mr-2" />
+                                            View Details
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem onClick={() => openEditDialog(request)}>
+                                            <Edit className="h-4 w-4 mr-2" />
+                                            Edit
+                                          </DropdownMenuItem>
+                                          <DropdownMenuSeparator />
+                                          <DropdownMenuItem onClick={() => openDeleteDialog(request)} className="text-red-600">
+                                            <Trash2 className="h-4 w-4 mr-2" />
+                                            Delete
+                                          </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {openRequests.length === 0 && (
+                    <Card>
+                      <CardContent className="flex flex-col items-center justify-center py-12">
+                        <CheckCircle className="h-12 w-12 text-green-500 mb-4" />
+                        <p className="text-lg font-medium">All caught up!</p>
+                        <p className="text-muted-foreground">No open procurement requests</p>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              </TabsContent>
+
+              {/* Cash Manager Tab - Procurement workflow tracking */}
+              <TabsContent value="cash-manager">
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="flex items-center gap-2">
+                          <CreditCard className="h-5 w-5" />
+                          Cash Manager — Procurement Workflow
+                        </CardTitle>
+                        <CardDescription>
+                          Track procurement through IR → Cash Manager Approval → Order → Receive → Allocate
+                        </CardDescription>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Select
+                          value={statusFilter}
+                          onValueChange={setStatusFilter}
+                        >
+                          <SelectTrigger className="w-[150px]">
+                            <SelectValue placeholder="Filter status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Statuses</SelectItem>
+                            <SelectItem value="pending">Pending IR</SelectItem>
+                            <SelectItem value="approved">Approved</SelectItem>
+                            <SelectItem value="ordered">Ordered</SelectItem>
+                            <SelectItem value="received">Received</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Select
+                          value={urgencyFilter}
+                          onValueChange={setUrgencyFilter}
+                        >
+                          <SelectTrigger className="w-[150px]">
+                            <SelectValue placeholder="Filter urgency" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Urgencies</SelectItem>
+                            <SelectItem value="urgent">Urgent</SelectItem>
+                            <SelectItem value="1-week">1 Week</SelectItem>
+                            <SelectItem value="2-weeks">2 Weeks</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm" disabled={filteredCashManager.length === 0}>
+                              <Download className="h-4 w-4 mr-2" />
+                              Export
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={exportCashManagerToExcel} disabled={filteredCashManager.length === 0}>
+                              <FileText className="h-4 w-4 mr-2" />
+                              Export to Excel
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={exportCashManagerToPDF} disabled={filteredCashManager.length === 0}>
+                              <FileDown className="h-4 w-4 mr-2" />
+                              Export to PDF
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={exportUrgentIRsToExcel}
+                              disabled={!cashManagerRequests.some(r => r.urgency_level === 'urgent')}
+                              className="text-red-600"
+                            >
+                              <AlertTriangle className="h-4 w-4 mr-2" />
+                              Export Urgent IRs Only
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  {/* Bulk Selection Bar */}
+                  {selectedRequestIds.size > 0 && (
+                    <div className="flex items-center gap-3 mx-6 mb-4 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                      <Badge variant="secondary" className="text-sm">
+                        {selectedRequestIds.size} selected
+                      </Badge>
+                      <Button size="sm" onClick={handleBulkAllocate} disabled={allocateToJobCard.isPending}>
+                        <CheckCircle className="h-4 w-4 mr-1" />
+                        Allocate Selected
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={handleBulkMoveToAllRequests} disabled={updateRequest.isPending}>
+                        <BookOpen className="h-4 w-4 mr-1" />
+                        Move to All Requests
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setSelectedRequestIds(new Set())}>
+                        Clear Selection
+                      </Button>
+                    </div>
+                  )}
+                  <CardContent>
+                    <ScrollArea className="h-[600px]">
+                      <Table className="min-w-[900px]">
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-10">
+                              <Checkbox
+                                checked={filteredCashManager.length > 0 && filteredCashManager.every(r => selectedRequestIds.has(r.id))}
+                                onCheckedChange={() => {
+                                  const allSelected = filteredCashManager.every(r => selectedRequestIds.has(r.id));
+                                  if (allSelected) {
+                                    setSelectedRequestIds(new Set());
+                                  } else {
+                                    setSelectedRequestIds(new Set(filteredCashManager.map(r => r.id)));
+                                  }
+                                }}
+                              />
+                            </TableHead>
+                            <TableHead>Part</TableHead>
+                            <TableHead>IR #</TableHead>
+                            <TableHead>Qty</TableHead>
+                            <TableHead>Source</TableHead>
+                            <TableHead>Workflow Progress</TableHead>
+                            <TableHead>Lead Time</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead className="w-[180px]">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {Array.from(irGroups.entries()).map(([irKey, items]) => {
+                            const isGroup = items.length > 1;
+                            const isExpanded = expandedIRs.has(irKey);
+                            const groupStep = isGroup ? getGroupWorkflowStep(items) : null;
+                            const totalQty = items.reduce((sum, r) => sum + r.quantity, 0);
+
+                            if (!isGroup) {
+                              // Single-item IR – render as a normal row
+                              const request = items[0];
+                              return (
+                                <TableRow key={request.id} className={selectedRequestIds.has(request.id) ? "bg-blue-50/50 dark:bg-blue-950/10" : "cursor-pointer hover:bg-muted/50"}>
+                                  <TableCell onClick={(e) => { e.stopPropagation(); setSelectedRequestIds(prev => { const newSet = new Set(prev); if (newSet.has(request.id)) newSet.delete(request.id); else newSet.add(request.id); return newSet; }); }}>
+                                    <Checkbox checked={selectedRequestIds.has(request.id)} />
+                                  </TableCell>
+                                  <TableCell onClick={() => openDetailDialog(request)}>
+                                    <div>
+                                      <div className="font-medium">{request.part_name}</div>
+                                      {request.part_number && (
+                                        <div className="text-xs text-muted-foreground font-mono">{request.part_number}</div>
+                                      )}
+                                      {request.vendor?.vendor_name && (
+                                        <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                                          <Store className="h-3 w-3" />
+                                          {request.vendor.vendor_name}
+                                        </div>
+                                      )}
+                                      {request.urgency_level && (
+                                        <div className="mt-1">
+                                          {getUrgencyBadge(request.urgency_level)}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>
+                                    <span className="font-mono text-sm">{request.ir_number || request.sage_requisition_number || "—"}</span>
+                                  </TableCell>
+                                  <TableCell className="font-mono">{request.quantity}</TableCell>
+                                  <TableCell>
+                                    {request.job_card_id ? (
+                                      <Badge variant="outline" className="text-xs">
+                                        <FileText className="h-3 w-3 mr-1" />
+                                        {request.job_card?.job_number || "Job Card"}
+                                      </Badge>
+                                    ) : request.inventory_id ? (
+                                      <Badge variant="outline" className="text-xs">
+                                        <Package className="h-3 w-3 mr-1" />
+                                        Restock
+                                      </Badge>
+                                    ) : (
+                                      <Badge variant="secondary" className="text-xs">Manual</Badge>
+                                    )}
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="flex items-center gap-1">
+                                      <Tooltip>
+                                        <TooltipTrigger>
+                                          <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium", (request.ir_number || request.sage_requisition_date) ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400")}>
+                                            {(request.ir_number || request.sage_requisition_date) ? <Check className="h-3 w-3" /> : "1"}
+                                          </div>
+                                        </TooltipTrigger>
+                                        <TooltipContent><p className="font-semibold">IR Created</p>{request.ir_number ? <p>✓ IR: {request.ir_number}</p> : <p className="text-muted-foreground">Not yet submitted</p>}</TooltipContent>
+                                      </Tooltip>
+                                      <div className="w-4 h-0.5 bg-gray-200" />
+                                      <Tooltip>
+                                        <TooltipTrigger>
+                                          <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium", request.cash_manager_approval_date ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400")}>
+                                            {request.cash_manager_approval_date ? <Check className="h-3 w-3" /> : "2"}
+                                          </div>
+                                        </TooltipTrigger>
+                                        <TooltipContent><p className="font-semibold">Cash Manager</p>{request.cash_manager_approval_date ? <><p>✓ {formatDate(request.cash_manager_approval_date)}</p><p>Ref: {request.cash_manager_reference}</p></> : <p className="text-muted-foreground">Awaiting approval</p>}</TooltipContent>
+                                      </Tooltip>
+                                      <div className="w-4 h-0.5 bg-gray-200" />
+                                      <Tooltip>
+                                        <TooltipTrigger>
+                                          <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium", request.ordered_at ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400")}>
+                                            {request.ordered_at ? <Check className="h-3 w-3" /> : "3"}
+                                          </div>
+                                        </TooltipTrigger>
+                                        <TooltipContent><p className="font-semibold">Ordered</p>{request.ordered_at ? <><p>✓ {formatDate(request.ordered_at)}</p><p>Vendor: {request.vendor?.vendor_name || "Unknown"}</p></> : <p className="text-muted-foreground">Not yet ordered</p>}</TooltipContent>
+                                      </Tooltip>
+                                      <div className="w-4 h-0.5 bg-gray-200" />
+                                      <Tooltip>
+                                        <TooltipTrigger>
+                                          <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium", request.received_date ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400")}>
+                                            {request.received_date ? <Check className="h-3 w-3" /> : "4"}
+                                          </div>
+                                        </TooltipTrigger>
+                                        <TooltipContent><p className="font-semibold">Received</p>{request.received_date ? <><p>✓ {formatDate(request.received_date)}</p><p>Qty: {request.received_quantity ?? request.quantity}</p></> : <p className="text-muted-foreground">Awaiting delivery</p>}</TooltipContent>
+                                      </Tooltip>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>
+                                    {request.received_date ? (
+                                      <Tooltip>
+                                        <TooltipTrigger>
+                                          <Badge variant="outline" className={cn("text-xs", (getLeadTime(request)?.days ?? 0) <= 3 && "border-green-500 text-green-600", (getLeadTime(request)?.days ?? 0) > 3 && (getLeadTime(request)?.days ?? 0) <= 7 && "border-yellow-500 text-yellow-600", (getLeadTime(request)?.days ?? 0) > 7 && "border-red-500 text-red-600")}>
+                                            <Clock className="h-3 w-3 mr-1" />
+                                            {getLeadTime(request)?.formatted}
+                                          </Badge>
+                                        </TooltipTrigger>
+                                        <TooltipContent><p className="font-semibold">Lead Time</p><p>Total: {getTotalProcurementTime(request)?.formatted}</p></TooltipContent>
+                                      </Tooltip>
+                                    ) : request.ordered_at ? (
+                                      <Badge variant="outline" className="text-xs border-blue-500 text-blue-600">
+                                        <Clock className="h-3 w-3 mr-1 animate-pulse" />
+                                        {calculateLeadTime(request.ordered_at, new Date().toISOString())?.formatted || 'Pending'}
+                                      </Badge>
+                                    ) : (
+                                      <span className="text-xs text-muted-foreground">—</span>
+                                    )}
+                                  </TableCell>
+                                  <TableCell>{getStatusBadge(request.status)}</TableCell>
+                                  <TableCell>
+                                    <div className="flex gap-1 flex-wrap">
+                                      {(request.ir_number || request.sage_requisition_date) && !request.cash_manager_approval_date && (
+                                        <Button size="sm" variant="outline" onClick={() => openCashManagerDialog(request)}><CreditCard className="h-3 w-3 mr-1" />Approve</Button>
+                                      )}
+                                      {request.cash_manager_approval_date && !request.ordered_at && (
+                                        <Button size="sm" variant="outline" onClick={() => openOrderDialog(request)}><ShoppingCart className="h-3 w-3 mr-1" />Order</Button>
+                                      )}
+                                      {request.ordered_at && !request.received_date && (
+                                        <Button size="sm" variant="outline" onClick={() => openReceiveDialog(request)}><Truck className="h-3 w-3 mr-1" />Receive</Button>
+                                      )}
+                                      {/* Show Allocate button when: received OR (approved and has inventory with sufficient stock) */}
+                                      {(request.received_date || (request.cash_manager_approval_date && request.inventory_id)) && request.job_card_id && !request.allocated_to_job_card && (
+                                        <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => handleAllocateToJobCard(request)} disabled={allocateToJobCard.isPending}><CheckCircle className="h-3 w-3 mr-1" />Allocate</Button>
+                                      )}
+                                      {request.allocated_to_job_card && (
+                                        <Badge className="bg-green-600"><CheckCircle className="h-3 w-3 mr-1" />Fulfilled</Badge>
+                                      )}
+                                        <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                          <DropdownMenuItem onClick={() => openDetailDialog(request)}><FileText className="h-4 w-4 mr-2" />View Details</DropdownMenuItem>
+                                          <DropdownMenuItem onClick={() => openEditDialog(request)}><Edit className="h-4 w-4 mr-2" />Edit</DropdownMenuItem>
+                                          {!request.sage_requisition_date && !request.ir_number && (
+                                            <><DropdownMenuSeparator /><DropdownMenuItem onClick={() => openSageDialog(request)}><BookOpen className="h-4 w-4 mr-2" />Add IR Number</DropdownMenuItem></>
+                                          )}
+                                          <DropdownMenuSeparator />
+                                          <DropdownMenuItem onClick={() => handleMoveToAllRequests(request)}><BookOpen className="h-4 w-4 mr-2" />Move to All Requests</DropdownMenuItem>
+                                          <DropdownMenuItem onClick={() => openDeleteDialog(request)} className="text-red-600"><Trash2 className="h-4 w-4 mr-2" />Delete</DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            }
+
+                            // Multi-item IR group – collapsible header + child rows
+                            return (
+                              <React.Fragment key={irKey}>
+                                {/* Group Header Row */}
+                                <TableRow
+                                  className="cursor-pointer bg-muted/30 hover:bg-muted/50 border-b-0"
+                                  onClick={() => toggleIR(irKey)}
+                                >
+                                  <TableCell>
+                                    <Checkbox
+                                      checked={items.every(r => selectedRequestIds.has(r.id))}
+                                      onCheckedChange={() => {
+                                        const allSelected = items.every(r => selectedRequestIds.has(r.id));
+                                        setSelectedRequestIds(prev => {
+                                          const newSet = new Set(prev);
+                                          items.forEach(r => {
+                                            if (allSelected) newSet.delete(r.id);
+                                            else newSet.add(r.id);
+                                          });
+                                          return newSet;
+                                        });
+                                      }}
+                                      onClick={(e) => e.stopPropagation()}
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="flex items-center gap-2">
+                                      {isExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                                      <div>
+                                        <div className="font-semibold">{items.length} items</div>
+                                        <div className="text-xs text-muted-foreground">
+                                          {items.map(r => r.part_name).join(", ").substring(0, 60)}
+                                          {items.map(r => r.part_name).join(", ").length > 60 ? "…" : ""}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>
+                                    <span className="font-mono text-sm font-semibold">{irKey.startsWith("ungrouped-") ? "—" : irKey}</span>
+                                  </TableCell>
+                                  <TableCell className="font-mono font-semibold">{totalQty}</TableCell>
+                                  <TableCell>
+                                    <Badge variant="outline" className="text-xs">
+                                      <Package className="h-3 w-3 mr-1" />
+                                      {items.length} items
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge variant={groupStep!.variant}>{groupStep!.label}</Badge>
+                                  </TableCell>
+                                  <TableCell>—</TableCell>
+                                  <TableCell>
+                                    <Badge variant={groupStep!.variant}>{groupStep!.label}</Badge>
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="flex gap-1 flex-wrap">
+                                      {/* Group-level actions: show if ANY item needs the step */}
+                                      {items.some(r => (r.ir_number || r.sage_requisition_date) && !r.cash_manager_approval_date) && (
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); toggleIR(irKey); }}>
+                                              <CreditCard className="h-3 w-3 mr-1" />Approve
+                                            </Button>
+                                          </TooltipTrigger>
+                                          <TooltipContent>Expand to approve individual items</TooltipContent>
+                                        </Tooltip>
+                                      )}
+                                      {items.some(r => r.cash_manager_approval_date && !r.ordered_at) && (
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); toggleIR(irKey); }}>
+                                              <ShoppingCart className="h-3 w-3 mr-1" />Order
+                                            </Button>
+                                          </TooltipTrigger>
+                                          <TooltipContent>Expand to place orders</TooltipContent>
+                                        </Tooltip>
+                                      )}
+                                      {items.every(r => r.allocated_to_job_card) && (
+                                        <Badge className="bg-green-600"><CheckCircle className="h-3 w-3 mr-1" />All Fulfilled</Badge>
+                                      )}
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+
+                                {/* Expanded child rows */}
+                                {isExpanded && items.map((request) => (
+                                  <TableRow key={request.id} className={`bg-muted/10 hover:bg-muted/20 ${selectedRequestIds.has(request.id) ? "bg-blue-50/50 dark:bg-blue-950/10" : ""}`}>
+                                    <TableCell onClick={(e) => { e.stopPropagation(); setSelectedRequestIds(prev => { const newSet = new Set(prev); if (newSet.has(request.id)) newSet.delete(request.id); else newSet.add(request.id); return newSet; }); }}>
+                                      <Checkbox checked={selectedRequestIds.has(request.id)} />
+                                    </TableCell>
+                                    <TableCell onClick={() => openDetailDialog(request)} className="cursor-pointer">
+                                      <div className="pl-6">
+                                        <div className="font-medium">{request.part_name}</div>
+                                        {request.part_number && (
+                                          <div className="text-xs text-muted-foreground font-mono">{request.part_number}</div>
+                                        )}
+                                        {request.vendor?.vendor_name && (
+                                          <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                                            <Store className="h-3 w-3" />
+                                            {request.vendor.vendor_name}
+                                          </div>
+                                        )}
+                                        {request.urgency_level && (
+                                          <div className="mt-1">
+                                            {getUrgencyBadge(request.urgency_level)}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </TableCell>
+                                    <TableCell>
+                                      <span className="text-xs text-muted-foreground">—</span>
+                                    </TableCell>
+                                    <TableCell className="font-mono">{request.quantity}</TableCell>
+                                    <TableCell>
+                                      {request.job_card_id ? (
+                                        <Badge variant="outline" className="text-xs">
+                                          <FileText className="h-3 w-3 mr-1" />
+                                          {request.job_card?.job_number || "Job Card"}
+                                        </Badge>
+                                      ) : request.inventory_id ? (
+                                        <Badge variant="outline" className="text-xs">
+                                          <Package className="h-3 w-3 mr-1" />
+                                          Restock
+                                        </Badge>
+                                      ) : (
+                                        <Badge variant="secondary" className="text-xs">Manual</Badge>
+                                      )}
+                                    </TableCell>
+                                    <TableCell>
+                                      <div className="flex items-center gap-1">
+                                        <Tooltip>
+                                          <TooltipTrigger>
+                                            <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium", (request.ir_number || request.sage_requisition_date) ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400")}>
+                                              {(request.ir_number || request.sage_requisition_date) ? <Check className="h-3 w-3" /> : "1"}
+                                            </div>
+                                          </TooltipTrigger>
+                                          <TooltipContent><p className="font-semibold">IR Created</p></TooltipContent>
+                                        </Tooltip>
+                                        <div className="w-4 h-0.5 bg-gray-200" />
+                                        <Tooltip>
+                                          <TooltipTrigger>
+                                            <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium", request.cash_manager_approval_date ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400")}>
+                                              {request.cash_manager_approval_date ? <Check className="h-3 w-3" /> : "2"}
+                                            </div>
+                                          </TooltipTrigger>
+                                          <TooltipContent><p className="font-semibold">Cash Manager</p></TooltipContent>
+                                        </Tooltip>
+                                        <div className="w-4 h-0.5 bg-gray-200" />
+                                        <Tooltip>
+                                          <TooltipTrigger>
+                                            <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium", request.ordered_at ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400")}>
+                                              {request.ordered_at ? <Check className="h-3 w-3" /> : "3"}
+                                            </div>
+                                          </TooltipTrigger>
+                                          <TooltipContent><p className="font-semibold">Ordered</p></TooltipContent>
+                                        </Tooltip>
+                                        <div className="w-4 h-0.5 bg-gray-200" />
+                                        <Tooltip>
+                                          <TooltipTrigger>
+                                            <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium", request.received_date ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400")}>
+                                              {request.received_date ? <Check className="h-3 w-3" /> : "4"}
+                                            </div>
+                                          </TooltipTrigger>
+                                          <TooltipContent><p className="font-semibold">Received</p></TooltipContent>
+                                        </Tooltip>
+                                      </div>
+                                    </TableCell>
+                                    <TableCell>
+                                      {request.received_date ? (
+                                        <Badge variant="outline" className={cn("text-xs", (getLeadTime(request)?.days ?? 0) <= 3 && "border-green-500 text-green-600", (getLeadTime(request)?.days ?? 0) > 7 && "border-red-500 text-red-600")}>
+                                          <Clock className="h-3 w-3 mr-1" />
+                                          {getLeadTime(request)?.formatted}
+                                        </Badge>
+                                      ) : request.ordered_at ? (
+                                        <Badge variant="outline" className="text-xs border-blue-500 text-blue-600">
+                                          <Clock className="h-3 w-3 mr-1 animate-pulse" />
+                                          {calculateLeadTime(request.ordered_at, new Date().toISOString())?.formatted || 'Pending'}
+                                        </Badge>
+                                      ) : (
+                                        <span className="text-xs text-muted-foreground">—</span>
+                                      )}
+                                    </TableCell>
+                                    <TableCell>{getStatusBadge(request.status)}</TableCell>
+                                    <TableCell>
+                                      <div className="flex gap-1 flex-wrap">
+                                        {(request.ir_number || request.sage_requisition_date) && !request.cash_manager_approval_date && (
+                                          <Button size="sm" variant="outline" onClick={() => openCashManagerDialog(request)}><CreditCard className="h-3 w-3 mr-1" />Approve</Button>
+                                        )}
+                                        {request.cash_manager_approval_date && !request.ordered_at && (
+                                          <Button size="sm" variant="outline" onClick={() => openOrderDialog(request)}><ShoppingCart className="h-3 w-3 mr-1" />Order</Button>
+                                        )}
+                                        {request.ordered_at && !request.received_date && (
+                                          <Button size="sm" variant="outline" onClick={() => openReceiveDialog(request)}><Truck className="h-3 w-3 mr-1" />Receive</Button>
+                                        )}
+                                        {/* Show Allocate button when: received OR (approved and has inventory with sufficient stock) */}
+                                        {(request.received_date || (request.cash_manager_approval_date && request.inventory_id)) && request.job_card_id && !request.allocated_to_job_card && (
+                                          <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => handleAllocateToJobCard(request)} disabled={allocateToJobCard.isPending}><CheckCircle className="h-3 w-3 mr-1" />Allocate</Button>
+                                        )}
+                                        {request.allocated_to_job_card && (
+                                          <Badge className="bg-green-600"><CheckCircle className="h-3 w-3 mr-1" />Fulfilled</Badge>
+                                        )}
+                                        <DropdownMenu>
+                                          <DropdownMenuTrigger asChild>
+                                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button>
+                                          </DropdownMenuTrigger>
+                                          <DropdownMenuContent align="end">
+                                            <DropdownMenuItem onClick={() => openDetailDialog(request)}><FileText className="h-4 w-4 mr-2" />View Details</DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => openEditDialog(request)}><Edit className="h-4 w-4 mr-2" />Edit</DropdownMenuItem>
+                                            <DropdownMenuSeparator />
+                                            <DropdownMenuItem onClick={() => openDeleteDialog(request)} className="text-red-600"><Trash2 className="h-4 w-4 mr-2" />Delete</DropdownMenuItem>
+                                          </DropdownMenuContent>
+                                        </DropdownMenu>
+                                      </div>
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </React.Fragment>
+                            );
+                          })}
+                          {cashManagerRequests.length === 0 && (
+                            <TableRow>
+                              <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                                No items in procurement workflow yet. Start procurement from the All Requests tab.
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </ScrollArea>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* Low Stock Tab */}
+              <TabsContent value="low-stock">
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="flex items-center gap-2">
+                          <AlertTriangle className="h-5 w-5 text-red-500" />
+                          Items Below Minimum Stock
+                        </CardTitle>
+                        <CardDescription>
+                          These inventory items need to be replenished
+                        </CardDescription>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="sm" disabled={lowStockItems.length === 0}>
+                            <Download className="h-4 w-4 mr-2" />
+                            Export
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={exportLowStockToExcel}>
+                            <FileText className="h-4 w-4 mr-2" />
+                            Export to Excel
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={exportLowStockToPDF}>
+                            <FileDown className="h-4 w-4 mr-2" />
+                            Export to PDF
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {loadingLowStock ? (
+                      <div className="flex justify-center py-8">
+                        <Loader2 className="h-6 w-6 animate-spin" />
+                      </div>
+                    ) : lowStockItems.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <Table className="min-w-[700px]">
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Item</TableHead>
+                              <TableHead>Category</TableHead>
+                              <TableHead className="text-right">Current Stock</TableHead>
+                              <TableHead className="text-right">Minimum</TableHead>
+                              <TableHead className="text-right">Shortage</TableHead>
+                              <TableHead>Supplier</TableHead>
+                              <TableHead>Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {lowStockItems.map((item) => (
+                              <TableRow key={item.id}>
                                 <TableCell>
-                                  <div className="flex items-center gap-1">
-                                    <Tooltip>
-                                      <TooltipTrigger>
-                                        <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium", (request.ir_number || request.sage_requisition_date) ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400")}>
-                                          {(request.ir_number || request.sage_requisition_date) ? <Check className="h-3 w-3" /> : "1"}
-                                        </div>
-                                      </TooltipTrigger>
-                                      <TooltipContent><p className="font-semibold">IR Created</p></TooltipContent>
-                                    </Tooltip>
-                                    <div className="w-4 h-0.5 bg-gray-200" />
-                                    <Tooltip>
-                                      <TooltipTrigger>
-                                        <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium", request.cash_manager_approval_date ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400")}>
-                                          {request.cash_manager_approval_date ? <Check className="h-3 w-3" /> : "2"}
-                                        </div>
-                                      </TooltipTrigger>
-                                      <TooltipContent><p className="font-semibold">Cash Manager</p></TooltipContent>
-                                    </Tooltip>
-                                    <div className="w-4 h-0.5 bg-gray-200" />
-                                    <Tooltip>
-                                      <TooltipTrigger>
-                                        <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium", request.ordered_at ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400")}>
-                                          {request.ordered_at ? <Check className="h-3 w-3" /> : "3"}
-                                        </div>
-                                      </TooltipTrigger>
-                                      <TooltipContent><p className="font-semibold">Ordered</p></TooltipContent>
-                                    </Tooltip>
-                                    <div className="w-4 h-0.5 bg-gray-200" />
-                                    <Tooltip>
-                                      <TooltipTrigger>
-                                        <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium", request.received_date ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400")}>
-                                          {request.received_date ? <Check className="h-3 w-3" /> : "4"}
-                                        </div>
-                                      </TooltipTrigger>
-                                      <TooltipContent><p className="font-semibold">Received</p></TooltipContent>
-                                    </Tooltip>
+                                  <div>
+                                    <div className="font-medium">{item.name}</div>
+                                    <div className="text-xs text-muted-foreground font-mono">
+                                      {item.part_number}
+                                    </div>
                                   </div>
                                 </TableCell>
                                 <TableCell>
-                                  {request.received_date ? (
-                                    <Badge variant="outline" className={cn("text-xs", (getLeadTime(request)?.days ?? 0) <= 3 && "border-green-500 text-green-600", (getLeadTime(request)?.days ?? 0) > 7 && "border-red-500 text-red-600")}>
-                                      <Clock className="h-3 w-3 mr-1" />
-                                      {getLeadTime(request)?.formatted}
-                                    </Badge>
-                                  ) : request.ordered_at ? (
-                                    <Badge variant="outline" className="text-xs border-blue-500 text-blue-600">
-                                      <Clock className="h-3 w-3 mr-1 animate-pulse" />
-                                      {calculateLeadTime(request.ordered_at, new Date().toISOString())?.formatted || 'Pending'}
-                                    </Badge>
-                                  ) : (
-                                    <span className="text-xs text-muted-foreground">—</span>
-                                  )}
+                                  <Badge variant="outline">{item.category}</Badge>
                                 </TableCell>
-                                <TableCell>{getStatusBadge(request.status)}</TableCell>
+                                <TableCell className="text-right font-mono text-red-600">
+                                  {item.quantity}
+                                </TableCell>
+                                <TableCell className="text-right font-mono">
+                                  {item.min_quantity}
+                                </TableCell>
+                                <TableCell className="text-right font-mono font-bold text-red-600">
+                                  -{item.shortage}
+                                </TableCell>
+                                <TableCell>{item.supplier || "—"}</TableCell>
                                 <TableCell>
-                                  <div className="flex gap-1 flex-wrap">
-                                    {(request.ir_number || request.sage_requisition_date) && !request.cash_manager_approval_date && (
-                                      <Button size="sm" variant="outline" onClick={() => openCashManagerDialog(request)}><CreditCard className="h-3 w-3 mr-1" />Approve</Button>
-                                    )}
-                                    {request.cash_manager_approval_date && !request.ordered_at && (
-                                      <Button size="sm" variant="outline" onClick={() => openOrderDialog(request)}><ShoppingCart className="h-3 w-3 mr-1" />Order</Button>
-                                    )}
-                                    {request.ordered_at && !request.received_date && (
-                                      <Button size="sm" variant="outline" onClick={() => openReceiveDialog(request)}><Truck className="h-3 w-3 mr-1" />Receive</Button>
-                                    )}
-                                    {request.received_date && request.job_card_id && !request.allocated_to_job_card && (
-                                      <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => handleAllocateToJobCard(request)} disabled={allocateToJobCard.isPending}><CheckCircle className="h-3 w-3 mr-1" />Allocate</Button>
-                                    )}
-                                    {request.allocated_to_job_card && (
-                                      <Badge className="bg-green-600"><CheckCircle className="h-3 w-3 mr-1" />Fulfilled</Badge>
-                                    )}
-                                    <DropdownMenu>
-                                      <DropdownMenuTrigger asChild>
-                                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button>
-                                      </DropdownMenuTrigger>
-                                      <DropdownMenuContent align="end">
-                                        <DropdownMenuItem onClick={() => openDetailDialog(request)}><FileText className="h-4 w-4 mr-2" />View Details</DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => openEditDialog(request)}><Edit className="h-4 w-4 mr-2" />Edit</DropdownMenuItem>
-                                        <DropdownMenuSeparator />
-                                        <DropdownMenuItem onClick={() => openDeleteDialog(request)} className="text-red-600"><Trash2 className="h-4 w-4 mr-2" />Delete</DropdownMenuItem>
-                                      </DropdownMenuContent>
-                                    </DropdownMenu>
-                                  </div>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => openReplenishDialog(item)}
+                                  >
+                                    <PackagePlus className="h-4 w-4 mr-1" />
+                                    Replenish
+                                  </Button>
                                 </TableCell>
                               </TableRow>
                             ))}
-                          </React.Fragment>
-                        );
-                      })}
-                      {cashManagerRequests.length === 0 && (
-                        <TableRow>
-                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                            No items in procurement workflow yet. Start procurement from the All Requests tab.
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </ScrollArea>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Low Stock Tab */}
-          <TabsContent value="low-stock">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      <AlertTriangle className="h-5 w-5 text-red-500" />
-                      Items Below Minimum Stock
-                    </CardTitle>
-                    <CardDescription>
-                      These inventory items need to be replenished
-                    </CardDescription>
-                  </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" disabled={lowStockItems.length === 0}>
-                        <Download className="h-4 w-4 mr-2" />
-                        Export
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={exportLowStockToExcel}>
-                        <FileText className="h-4 w-4 mr-2" />
-                        Export to Excel
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={exportLowStockToPDF}>
-                        <FileDown className="h-4 w-4 mr-2" />
-                        Export to PDF
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {loadingLowStock ? (
-                  <div className="flex justify-center py-8">
-                    <Loader2 className="h-6 w-6 animate-spin" />
-                  </div>
-                ) : lowStockItems.length > 0 ? (
-                  <div className="overflow-x-auto">
-                  <Table className="min-w-[700px]">
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Item</TableHead>
-                        <TableHead>Category</TableHead>
-                        <TableHead className="text-right">Current Stock</TableHead>
-                        <TableHead className="text-right">Minimum</TableHead>
-                        <TableHead className="text-right">Shortage</TableHead>
-                        <TableHead>Supplier</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {lowStockItems.map((item) => (
-                        <TableRow key={item.id}>
-                          <TableCell>
-                            <div>
-                              <div className="font-medium">{item.name}</div>
-                              <div className="text-xs text-muted-foreground font-mono">
-                                {item.part_number}
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline">{item.category}</Badge>
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-red-600">
-                            {item.quantity}
-                          </TableCell>
-                          <TableCell className="text-right font-mono">
-                            {item.min_quantity}
-                          </TableCell>
-                          <TableCell className="text-right font-mono font-bold text-red-600">
-                            -{item.shortage}
-                          </TableCell>
-                          <TableCell>{item.supplier || "—"}</TableCell>
-                          <TableCell>
-                            <Button
-                              size="sm"
-                              onClick={() => openReplenishDialog(item)}
-                            >
-                              <PackagePlus className="h-4 w-4 mr-1" />
-                              Replenish
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-12">
-                    <CheckCircle className="h-12 w-12 text-green-500 mb-4" />
-                    <p className="text-lg font-medium">Stock Levels OK</p>
-                    <p className="text-muted-foreground">All items are above minimum levels</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Requests Tab - For restock items with checkboxes and priorities */}
-          <TabsContent value="requests">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      <ShoppingBag className="h-5 w-5 text-primary" />
-                      Restock Requests
-                    </CardTitle>
-                    <CardDescription>
-                      Select items to request restock, assign priority levels, and export for processing
-                    </CardDescription>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {selectedRestockItems.size > 0 && (
-                      <span className="text-sm text-muted-foreground">
-                        {selectedRestockItems.size} item{selectedRestockItems.size !== 1 ? "s" : ""} selected
-                      </span>
+                          </TableBody>
+                        </Table>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-12">
+                        <CheckCircle className="h-12 w-12 text-green-500 mb-4" />
+                        <p className="text-lg font-medium">Stock Levels OK</p>
+                        <p className="text-muted-foreground">All items are above minimum levels</p>
+                      </div>
                     )}
-                    <Button
-                      variant="outline"
-                      onClick={exportRestockToExcel}
-                      disabled={selectedRestockItems.size === 0}
-                    >
-                      <Download className="h-4 w-4 mr-2" />
-                      Export Excel
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={exportRestockToPDF}
-                      disabled={selectedRestockItems.size === 0}
-                    >
-                      <FileDown className="h-4 w-4 mr-2" />
-                      Export PDF
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {loadingLowStock ? (
-                  <div className="flex justify-center py-8">
-                    <Loader2 className="h-6 w-6 animate-spin" />
-                  </div>
-                ) : lowStockItems.length > 0 ? (
-                  <div className="overflow-x-auto">
-                  <Table className="min-w-[800px]">
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-[50px]">
-                          <Checkbox
-                            checked={
-                              lowStockItems.length > 0 &&
-                              selectedRestockItems.size === lowStockItems.length
-                            }
-                            onCheckedChange={toggleAllRestockItems}
-                            aria-label="Select all items"
-                          />
-                        </TableHead>
-                        <TableHead>Item</TableHead>
-                        <TableHead>Category</TableHead>
-                        <TableHead className="text-right">Current Stock</TableHead>
-                        <TableHead className="text-right">Shortage</TableHead>
-                        <TableHead>Priority</TableHead>
-                        <TableHead>Supplier</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {lowStockItems.map((item) => (
-                        <TableRow
-                          key={item.id}
-                          className={cn(
-                            selectedRestockItems.has(item.id) && "bg-muted/50"
-                          )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* Requests Tab - For restock items with checkboxes and priorities */}
+              <TabsContent value="requests">
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="flex items-center gap-2">
+                          <ShoppingBag className="h-5 w-5 text-primary" />
+                          Restock Requests
+                        </CardTitle>
+                        <CardDescription>
+                          Select items to request restock, assign priority levels, and export for processing
+                        </CardDescription>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {selectedRestockItems.size > 0 && (
+                          <span className="text-sm text-muted-foreground">
+                            {selectedRestockItems.size} item{selectedRestockItems.size !== 1 ? "s" : ""} selected
+                          </span>
+                        )}
+                        <Button
+                          variant="outline"
+                          onClick={exportRestockToExcel}
+                          disabled={selectedRestockItems.size === 0}
                         >
-                          <TableCell>
-                            <Checkbox
-                              checked={selectedRestockItems.has(item.id)}
-                              onCheckedChange={() => toggleRestockItem(item.id)}
-                              aria-label={`Select ${item.name}`}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <div>
-                              <div className="font-medium">{item.name}</div>
-                              <div className="text-xs text-muted-foreground font-mono">
-                                {item.part_number}
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline">{item.category}</Badge>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <span className="font-mono text-red-600">{item.quantity}</span>
-                            <span className="text-muted-foreground"> / {item.min_quantity}</span>
-                          </TableCell>
-                          <TableCell className="text-right font-mono font-bold text-red-600">
-                            -{item.shortage}
-                          </TableCell>
-                          <TableCell>
-                            <Select
-                              value={restockPriorities[item.id] || ""}
-                              onValueChange={(value) =>
-                                setRestockPriority(item.id, value as PriorityLevel)
-                              }
-                            >
-                              <SelectTrigger className="w-[160px]">
-                                <SelectValue placeholder="Set priority">
-                                  {restockPriorities[item.id] ? (
-                                    getPriorityBadge(restockPriorities[item.id])
-                                  ) : (
-                                    "Set priority"
-                                  )}
-                                </SelectValue>
-                              </SelectTrigger>
-                              <SelectContent>
-                                {PRIORITY_OPTIONS.map((option) => (
-                                  <SelectItem key={option.value} value={option.value}>
-                                    <div className="flex items-center gap-2">
-                                      <div
-                                        className={`w-2 h-2 rounded-full ${option.color}`}
-                                      />
-                                      {option.label}
+                          <Download className="h-4 w-4 mr-2" />
+                          Export Excel
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={exportRestockToPDF}
+                          disabled={selectedRestockItems.size === 0}
+                        >
+                          <FileDown className="h-4 w-4 mr-2" />
+                          Export PDF
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {loadingLowStock ? (
+                      <div className="flex justify-center py-8">
+                        <Loader2 className="h-6 w-6 animate-spin" />
+                      </div>
+                    ) : lowStockItems.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <Table className="min-w-[800px]">
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="w-[50px]">
+                                <Checkbox
+                                  checked={
+                                    lowStockItems.length > 0 &&
+                                    selectedRestockItems.size === lowStockItems.length
+                                  }
+                                  onCheckedChange={toggleAllRestockItems}
+                                  aria-label="Select all items"
+                                />
+                              </TableHead>
+                              <TableHead>Item</TableHead>
+                              <TableHead>Category</TableHead>
+                              <TableHead className="text-right">Current Stock</TableHead>
+                              <TableHead className="text-right">Shortage</TableHead>
+                              <TableHead>Priority</TableHead>
+                              <TableHead>Supplier</TableHead>
+                              <TableHead>Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {lowStockItems.map((item) => (
+                              <TableRow
+                                key={item.id}
+                                className={cn(
+                                  selectedRestockItems.has(item.id) && "bg-muted/50"
+                                )}
+                              >
+                                <TableCell>
+                                  <Checkbox
+                                    checked={selectedRestockItems.has(item.id)}
+                                    onCheckedChange={() => toggleRestockItem(item.id)}
+                                    aria-label={`Select ${item.name}`}
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <div>
+                                    <div className="font-medium">{item.name}</div>
+                                    <div className="text-xs text-muted-foreground font-mono">
+                                      {item.part_number}
                                     </div>
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </TableCell>
-                          <TableCell>{item.supplier || "—"}</TableCell>
-                          <TableCell>
-                            <Button
-                              size="sm"
-                              onClick={() => openReplenishDialog(item)}
-                            >
-                              <PackagePlus className="h-4 w-4 mr-1" />
-                              Replenish
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-12">
-                    <CheckCircle className="h-12 w-12 text-green-500 mb-4" />
-                    <p className="text-lg font-medium">No Items to Restock</p>
-                    <p className="text-muted-foreground">All inventory items are at or above minimum levels</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      </div>
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant="outline">{item.category}</Badge>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <span className="font-mono text-red-600">{item.quantity}</span>
+                                  <span className="text-muted-foreground"> / {item.min_quantity}</span>
+                                </TableCell>
+                                <TableCell className="text-right font-mono font-bold text-red-600">
+                                  -{item.shortage}
+                                </TableCell>
+                                <TableCell>
+                                  <Select
+                                    value={restockPriorities[item.id] || ""}
+                                    onValueChange={(value) =>
+                                      setRestockPriority(item.id, value as PriorityLevel)
+                                    }
+                                  >
+                                    <SelectTrigger className="w-[160px]">
+                                      <SelectValue placeholder="Set priority">
+                                        {restockPriorities[item.id] ? (
+                                          getPriorityBadge(restockPriorities[item.id])
+                                        ) : (
+                                          "Set priority"
+                                        )}
+                                      </SelectValue>
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {PRIORITY_OPTIONS.map((option) => (
+                                        <SelectItem key={option.value} value={option.value}>
+                                          <div className="flex items-center gap-2">
+                                            <div
+                                              className={`w-2 h-2 rounded-full ${option.color}`}
+                                            />
+                                            {option.label}
+                                          </div>
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </TableCell>
+                                <TableCell>{item.supplier || "—"}</TableCell>
+                                <TableCell>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => openReplenishDialog(item)}
+                                  >
+                                    <PackagePlus className="h-4 w-4 mr-1" />
+                                    Replenish
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-12">
+                        <CheckCircle className="h-12 w-12 text-green-500 mb-4" />
+                        <p className="text-lg font-medium">No Items to Restock</p>
+                        <p className="text-muted-foreground">All inventory items are at or above minimum levels</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
+          </div>
         </TabsContent>
       </Tabs>
 
@@ -3092,9 +3344,8 @@ const Procurement = () => {
                 <div className="space-y-3">
                   {getWorkflowStatus(selectedRequest).map((step, index) => (
                     <div key={index} className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                        step.completed ? "bg-green-100 text-green-600" : "bg-gray-100 text-gray-400"
-                      }`}>
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step.completed ? "bg-green-100 text-green-600" : "bg-gray-100 text-gray-400"
+                        }`}>
                         {step.completed ? (
                           <CheckCircle className="h-5 w-5" />
                         ) : (
