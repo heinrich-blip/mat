@@ -3,13 +3,13 @@ import { useVehicles } from "@/hooks/useVehicles";
 import { useWialonVehicles } from "@/hooks/useWialonVehicles";
 import { cn } from "@/lib/utils";
 import type { AlertSeverity, AlertStatus } from "@/types";
-import { ChevronDown, Filter, Search, Truck, X } from "lucide-react"; // Removed Clock
-import { useState } from "react"; // Make sure useState is imported
+import { ChevronDown, Filter, Search, Truck, X } from "lucide-react";
+import { useState } from "react";
 
 // Use the full return type from useAlertFilters
 type FilterBarReturn = ReturnType<typeof useAlertFilters>;
 
-/* Professional severity colors - muted and business-appropriate */
+/* Professional severity colors */
 const SEVERITIES: { value: AlertSeverity; color: string; label: string }[] = [
   { value: "critical", color: "text-destructive bg-destructive/10 border-destructive/20", label: "Critical" },
   { value: "high", color: "text-severity-high bg-severity-high/10 border-severity-high/20", label: "High" },
@@ -20,8 +20,7 @@ const SEVERITIES: { value: AlertSeverity; color: string; label: string }[] = [
 
 const STATUSES: { value: AlertStatus; label: string }[] = [
   { value: "active", label: "Active" },
-  { value: "acknowledged", label: "Acknowledged" },
-  { value: "resolved", label: "Resolved" },
+  { value: "resolved", label: "Resolved" }, // Removed "acknowledged"
 ];
 
 interface Vehicle {
@@ -250,7 +249,9 @@ export default function AlertFilterBar(props: FilterBarReturn) {
             className={cn(
               "text-xs px-2.5 py-1 rounded-full border font-medium transition-all",
               filters.statuses.includes(st.value)
-                ? "bg-primary/20 text-primary border-primary/30"
+                ? st.value === "active"
+                  ? "bg-destructive/10 text-destructive border-destructive/20"
+                  : "bg-emerald-500/10 text-emerald-600 border-emerald-500/20 dark:text-emerald-400"
                 : "text-muted-foreground bg-transparent border-border opacity-60 hover:opacity-100"
             )}
           >

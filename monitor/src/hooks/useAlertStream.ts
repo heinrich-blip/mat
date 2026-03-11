@@ -4,29 +4,6 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import type { Alert } from "@/types";
 
-const SEVERITY_COLORS: Record<string, string> = {
-  critical: "#ef4444",
-  high: "#f97316",
-  medium: "#f59e0b",
-  low: "#3b82f6",
-  info: "#6b7280",
-};
-
-const getToastOptions = (severity: string, color: string) => {
-  const base = {
-    duration: severity === "critical" ? 10_000 : severity === "high" ? 7_000 : 5_000,
-    style: { borderLeft: `4px solid ${color}` },
-  };
-
-  if (severity === "critical") {
-    return { ...base, variant: "error" as const };
-  }
-  if (severity === "high") {
-    return { ...base, variant: "warning" as const };
-  }
-  return { ...base, variant: "default" as const };
-};
-
 export function useAlertStream() {
   const queryClient = useQueryClient();
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -49,22 +26,18 @@ export function useAlertStream() {
           // Refresh related queries
           queryClient.invalidateQueries({ queryKey: ["alerts"] });
           queryClient.invalidateQueries({ queryKey: ["alert-counts"] });
+          queryClient.invalidateQueries({ queryKey: ["kpi-summary"] });
+          queryClient.invalidateQueries({ queryKey: ["alert-trend"] });
 
-          // Show toast notification
-          const color = SEVERITY_COLORS[newAlert.severity] ?? "#6b7280";
-          const { variant, duration, style } = getToastOptions(newAlert.severity, color);
+          // Show simple toast notification without severity
+          const message = newAlert.title;
+          const description = `${newAlert.source_label ?? "System"} • ${newAlert.message}`;
 
-          const message = `[${newAlert.severity.toUpperCase()}] ${newAlert.title}`;
-          const description = `${newAlert.source_label ?? ""} • ${newAlert.message}`;
-
-          // Use conditional rendering based on variant
-          if (variant === "error") {
-            toast.error(message, { description, duration, style });
-          } else if (variant === "warning") {
-            toast.warning(message, { description, duration, style });
-          } else {
-            toast(message, { description, duration, style });
-          }
+          toast(message, {
+            description,
+            duration: 5000,
+            style: { borderLeft: `4px solid #3b82f6` },
+          });
         }
       )
       .on(
@@ -73,6 +46,7 @@ export function useAlertStream() {
         () => {
           queryClient.invalidateQueries({ queryKey: ["alerts"] });
           queryClient.invalidateQueries({ queryKey: ["alert-counts"] });
+          queryClient.invalidateQueries({ queryKey: ["kpi-summary"] });
         }
       )
       .subscribe();

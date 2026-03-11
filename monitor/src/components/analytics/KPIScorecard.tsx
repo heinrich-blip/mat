@@ -53,7 +53,7 @@ export default function KPIScorecard({ filters }: KPIScorecardProps) {
       <KPICard
         label="Active Alerts"
         value={kpis?.activeAlerts ?? 0}
-        sublabel={`${kpis?.criticalAlerts ?? 0} critical`}
+        sublabel="need attention"
         color="text-foreground"
         isLoading={isLoading}
       />
@@ -67,7 +67,7 @@ export default function KPIScorecard({ filters }: KPIScorecardProps) {
       <KPICard
         label="Resolved"
         value={kpis?.resolvedAlerts ?? 0}
-        sublabel={`${kpis?.acknowledgedAlerts ?? 0} acknowledged`}
+        sublabel="in selected period"
         color="text-green-400"
         isLoading={isLoading}
       />
@@ -75,10 +75,10 @@ export default function KPIScorecard({ filters }: KPIScorecardProps) {
         label="Resolution Rate"
         value={kpis?.resolutionRate ?? 0}
         unit="%"
-        sublabel="resolved in period"
+        sublabel="of total alerts"
         color={
           (kpis?.resolutionRate ?? 0) >= 80 ? "text-green-400" :
-          (kpis?.resolutionRate ?? 0) >= 50 ? "text-amber-400" : "text-red-400"
+            (kpis?.resolutionRate ?? 0) >= 50 ? "text-amber-400" : "text-red-400"
         }
         isLoading={isLoading}
       />

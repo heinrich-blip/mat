@@ -5,7 +5,7 @@ import { MaintenanceCalendar } from "@/components/maintenance/MaintenanceCalenda
 import { MaintenanceHistory } from "@/components/maintenance/MaintenanceHistory";
 import { NotificationSettings } from "@/components/maintenance/NotificationSettings";
 import { OverdueAlerts } from "@/components/maintenance/OverdueAlerts";
-import { ScheduleList } from "@/components/maintenance/ScheduleList";
+import { ScheduleList } from "@/components/maintenance/ScheduleList"; // This should import from ScheduleList.tsx
 import { TemplateManager } from "@/components/maintenance/TemplateManager";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,7 +30,6 @@ export default function MaintenanceScheduling() {
         .order("next_due_date", { ascending: true });
 
       if (error) throw error;
-      // Cast to MaintenanceSchedule[] — all fields are compatible or optional
       return (data || []) as unknown as MaintenanceSchedule[];
     },
   });
@@ -130,26 +129,26 @@ export default function MaintenanceScheduling() {
               <TabsTrigger value="list" className="px-5 py-2.5 text-base whitespace-nowrap">Schedule List</TabsTrigger>
               <TabsTrigger value="calendar" className="px-5 py-2.5 text-base whitespace-nowrap">Calendar View</TabsTrigger>
               <TabsTrigger value="overdue" className="px-5 py-2.5 text-base whitespace-nowrap">
-              Overdue
-              {stats && stats.overdue > 0 && (
-                <Badge variant="destructive" className="ml-2">
-                  {stats.overdue}
-                </Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="history" className="px-5 py-2.5 text-base whitespace-nowrap">
-              History
-            </TabsTrigger>
-            <TabsTrigger value="analytics" className="px-5 py-2.5 text-base whitespace-nowrap">
-              Analytics
-            </TabsTrigger>
-            <TabsTrigger value="templates" className="px-5 py-2.5 text-base whitespace-nowrap">
-              Templates
-            </TabsTrigger>
-            <TabsTrigger value="notifications" className="px-5 py-2.5 text-base whitespace-nowrap">
-              Alerts
-            </TabsTrigger>
-          </TabsList>
+                Overdue
+                {stats && stats.overdue > 0 && (
+                  <Badge variant="destructive" className="ml-2">
+                    {stats.overdue}
+                  </Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="history" className="px-5 py-2.5 text-base whitespace-nowrap">
+                History
+              </TabsTrigger>
+              <TabsTrigger value="analytics" className="px-5 py-2.5 text-base whitespace-nowrap">
+                Analytics
+              </TabsTrigger>
+              <TabsTrigger value="templates" className="px-5 py-2.5 text-base whitespace-nowrap">
+                Templates
+              </TabsTrigger>
+              <TabsTrigger value="notifications" className="px-5 py-2.5 text-base whitespace-nowrap">
+                Alerts
+              </TabsTrigger>
+            </TabsList>
           </div>
 
           <TabsContent value="list" className="space-y-4">

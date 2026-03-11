@@ -17,16 +17,17 @@ export function useDocumentCounts() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("alerts")
-        .select("status, metadata")
+        .select("metadata")
         .eq("category", "maintenance_due")
-        .eq("metadata->>issue_type", "document_expiry");
+        .eq("metadata->>issue_type", "document_expiry")
+        .eq("status", "active"); // Only count active alerts
 
       if (error) throw error;
 
       const now = new Date();
       const counts = {
         total: data?.length || 0,
-        active: data?.filter((a: DocumentAlert) => a.status === 'active').length || 0,
+        active: data?.length || 0,
         expired: 0,
         expiringSoon: 0,
       };

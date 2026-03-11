@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { format, subDays, eachDayOfInterval, eachHourOfInterval, subHours } from "date-fns";
+import { format, subDays, eachDayOfInterval, eachHourOfInterval } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import type { AlertFilters, TimeSeriesPoint, CategoryDataPoint } from "@/types";
 
@@ -31,7 +31,15 @@ export function useAlertTrend(filters: AlertFilters) {
       const buckets: Record<string, TimeSeriesPoint> = {};
       intervals.forEach((dt) => {
         const key = useHourly ? format(dt, "MMM d HH:mm") : format(dt, "MMM d");
-        buckets[key] = { period: key, critical: 0, high: 0, medium: 0, low: 0, info: 0, total: 0 };
+        buckets[key] = {
+          period: key,
+          critical: 0,
+          high: 0,
+          medium: 0,
+          low: 0,
+          info: 0,
+          total: 0
+        };
       });
 
       (data ?? []).forEach((row) => {
@@ -39,7 +47,9 @@ export function useAlertTrend(filters: AlertFilters) {
         const key = useHourly ? format(dt, "MMM d HH:mm") : format(dt, "MMM d");
         if (buckets[key]) {
           const sev = row.severity as keyof Omit<TimeSeriesPoint, "period" | "total">;
-          buckets[key][sev]++;
+          if (sev in buckets[key]) {
+            buckets[key][sev]++;
+          }
           buckets[key].total++;
         }
       });
@@ -62,6 +72,8 @@ const CATEGORY_COLORS: Record<string, string> = {
   trip_delay: "#ec4899",
   load_exception: "#14b8a6",
   tyre_pressure: "#f59e0b",
+  duplicate_pod: "#ec4899",
+  document_expiry: "#f59e0b",
   custom: "#6b7280",
 };
 
@@ -75,6 +87,8 @@ const CATEGORY_LABELS: Record<string, string> = {
   trip_delay: "Trip Delay",
   load_exception: "Load Exception",
   tyre_pressure: "Tyre Pressure",
+  duplicate_pod: "Duplicate POD",
+  document_expiry: "Document Expiry",
   custom: "Custom",
 };
 
@@ -113,18 +127,18 @@ export function useKPISummary(filters: AlertFilters) {
   return useQuery({
     queryKey: ["kpi-summary", filters.startDate, filters.endDate],
     queryFn: async () => {
-      // Active alerts count
+      // Active alerts count (current)
       const { count: activeCount } = await supabase
         .from("alerts")
         .select("*", { count: "exact", head: true })
         .eq("status", "active");
 
-      // Critical alerts count
+      // Critical active alerts
       const { count: criticalCount } = await supabase
         .from("alerts")
         .select("*", { count: "exact", head: true })
-        .eq("severity", "critical")
-        .eq("status", "active");
+        .eq("status", "active")
+        .eq("severity", "critical");
 
       // Total alerts in period
       const { count: totalCount } = await supabase
@@ -138,14 +152,6 @@ export function useKPISummary(filters: AlertFilters) {
         .from("alerts")
         .select("*", { count: "exact", head: true })
         .eq("status", "resolved")
-        .gte("triggered_at", filters.startDate.toISOString())
-        .lte("triggered_at", filters.endDate.toISOString());
-
-      // Acknowledged in period
-      const { count: acknowledgedCount } = await supabase
-        .from("alerts")
-        .select("*", { count: "exact", head: true })
-        .eq("status", "acknowledged")
         .gte("triggered_at", filters.startDate.toISOString())
         .lte("triggered_at", filters.endDate.toISOString());
 
@@ -174,7 +180,6 @@ export function useKPISummary(filters: AlertFilters) {
         criticalAlerts: criticalCount ?? 0,
         totalAlerts: total,
         resolvedAlerts: resolved,
-        acknowledgedAlerts: acknowledgedCount ?? 0,
         resolutionRate,
         alertsTrend,
       };
@@ -205,12 +210,17 @@ export function useDailyAlertTrend() {
         const dayAlerts = (data ?? []).filter(
           (a) => format(new Date(a.triggered_at), "yyyy-MM-dd") === format(day, "yyyy-MM-dd")
         );
+
+        const critical = dayAlerts.filter(a => a.severity === "critical").length;
+        const high = dayAlerts.filter(a => a.severity === "high").length;
+        const medium = dayAlerts.filter(a => a.severity === "medium").length;
+
         return {
           day: key,
           total: dayAlerts.length,
-          critical: dayAlerts.filter((a) => a.severity === "critical").length,
-          high: dayAlerts.filter((a) => a.severity === "high").length,
-          medium: dayAlerts.filter((a) => a.severity === "medium").length,
+          critical,
+          high,
+          medium,
         };
       });
 
@@ -229,7 +239,7 @@ export function useAlertsBySource(filters: AlertFilters) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("alerts")
-        .select("source_label, source_type, severity")
+        .select("source_label, source_type, severity, status")
         .gte("triggered_at", filters.startDate.toISOString())
         .lte("triggered_at", filters.endDate.toISOString())
         .not("source_label", "is", null);
@@ -240,6 +250,7 @@ export function useAlertsBySource(filters: AlertFilters) {
         source_label: string;
         source_type: string;
         total: number;
+        active: number;
         critical: number;
         high: number;
         medium: number;
@@ -252,12 +263,16 @@ export function useAlertsBySource(filters: AlertFilters) {
             source_label: key,
             source_type: row.source_type,
             total: 0,
+            active: 0,
             critical: 0,
             high: 0,
             medium: 0,
           };
         }
         sourceMap[key].total++;
+        if (row.status === "active") {
+          sourceMap[key].active++;
+        }
         if (row.severity === "critical") sourceMap[key].critical++;
         if (row.severity === "high") sourceMap[key].high++;
         if (row.severity === "medium") sourceMap[key].medium++;
@@ -268,5 +283,3 @@ export function useAlertsBySource(filters: AlertFilters) {
     staleTime: 60_000,
   });
 }
-
-export { subHours };

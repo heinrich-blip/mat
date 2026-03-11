@@ -22,14 +22,16 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import RealtimeStatusBadge from "./RealtimeStatusBadge";
 
 const NAV_ITEMS = [
-  { to: "/alerts", icon: Bell, label: "Alert Feed", badge: "alerts" },
-  { to: "/trip-alerts", icon: Truck, label: "Trip Alerts", badge: "trip" },
-  { to: "/faults", icon: Wrench, label: "Faults", badge: "faults" },
-  { to: "/documents", icon: FileText, label: "Documents", badge: "documents" },
-  { to: "/diesel-alerts", icon: Fuel, label: "Diesel", badge: "diesel" },
-  { to: "/analytics", icon: BarChart3, label: "Analytics", badge: false },
-  { to: "/config", icon: Settings, label: "Alert Rules", badge: false },
-];
+  { to: "/alerts", icon: Bell, label: "Alert Feed", badge: "alerts" as const },
+  { to: "/trip-alerts", icon: Truck, label: "Trip Alerts", badge: "trip" as const },
+  { to: "/faults", icon: Wrench, label: "Faults", badge: "faults" as const },
+  { to: "/documents", icon: FileText, label: "Documents", badge: "documents" as const },
+  { to: "/diesel-alerts", icon: Fuel, label: "Diesel", badge: "diesel" as const },
+  { to: "/analytics", icon: BarChart3, label: "Analytics", badge: null },
+  { to: "/config", icon: Settings, label: "Alert Rules", badge: null },
+] as const;
+
+type BadgeType = 'alerts' | 'trip' | 'faults' | 'documents' | 'diesel' | null;
 
 export default function Layout() {
   const { user, signOut } = useAuth();
@@ -50,6 +52,116 @@ export default function Layout() {
     navigate("/auth");
   };
 
+  // Helper function to get badge count and color
+  const getBadgeConfig = (badgeType: BadgeType) => {
+    switch (badgeType) {
+      case "alerts":
+        if (!counts) return null;
+        if (counts.critical > 0) {
+          return {
+            count: counts.critical,
+            className: "bg-destructive text-destructive-foreground"
+          };
+        }
+        if (counts.high > 0) {
+          return {
+            count: counts.high,
+            className: "bg-severity-high text-white"
+          };
+        }
+        if (counts.medium > 0) {
+          return {
+            count: counts.medium,
+            className: "bg-severity-medium text-white"
+          };
+        }
+        return null;
+
+      case "trip":
+        if (!tripAlertCounts?.active) return null;
+        // Color based on severity
+        if (tripAlertCounts.critical > 0) {
+          return {
+            count: tripAlertCounts.active,
+            className: "bg-destructive text-destructive-foreground"
+          };
+        }
+        if (tripAlertCounts.high > 0) {
+          return {
+            count: tripAlertCounts.active,
+            className: "bg-severity-high text-white"
+          };
+        }
+        return {
+          count: tripAlertCounts.active,
+          className: "bg-severity-medium text-white"
+        };
+
+      case "faults":
+        if (!faultCounts?.active) return null;
+        // Color based on severity
+        if (faultCounts.critical > 0) {
+          return {
+            count: faultCounts.active,
+            className: "bg-destructive text-destructive-foreground"
+          };
+        }
+        if (faultCounts.high > 0) {
+          return {
+            count: faultCounts.active,
+            className: "bg-severity-high text-white"
+          };
+        }
+        return {
+          count: faultCounts.active,
+          className: "bg-severity-medium text-white"
+        };
+
+      case "documents":
+        if (!documentCounts?.active) return null;
+        // Show red for expired, orange for expiring soon
+        if (documentCounts.expired > 0) {
+          return {
+            count: documentCounts.active,
+            className: "bg-destructive text-destructive-foreground"
+          };
+        }
+        if (documentCounts.expiringSoon > 0) {
+          return {
+            count: documentCounts.active,
+            className: "bg-severity-high text-white"
+          };
+        }
+        return {
+          count: documentCounts.active,
+          className: "bg-severity-medium text-white"
+        };
+
+      case "diesel":
+        if (!dieselCounts?.active) return null;
+        // Color based on severity
+        if (dieselCounts.critical > 0) {
+          return {
+            count: dieselCounts.active,
+            className: "bg-destructive text-destructive-foreground"
+          };
+        }
+        if (dieselCounts.high > 0) {
+          return {
+            count: dieselCounts.active,
+            className: "bg-severity-high text-white"
+          };
+        }
+        return {
+          count: dieselCounts.active,
+          className: "bg-emerald-500 text-white"
+        };
+
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="flex h-screen bg-background overflow-hidden">
       {/* Sidebar */}
@@ -67,60 +179,38 @@ export default function Layout() {
 
         {/* Navigation */}
         <nav className="flex-1 py-3 space-y-0.5 px-2">
-          {NAV_ITEMS.map(({ to, icon: Icon, label, badge }) => (
-            <NavLink
-              key={to}
-              to={to}
-              className={({ isActive }) =>
-                cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-all duration-150 group",
-                  isActive
-                    ? "bg-primary/10 text-primary font-medium"
-                    : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                )
-              }
-            >
-              <Icon className={cn(
-                "h-4 w-4 flex-shrink-0 transition-colors",
-                "group-hover:text-foreground"
-              )} />
-              <span className="flex-1">{label}</span>
-              {badge === "alerts" && counts && (
-                <>
-                  {counts.critical > 0 && (
-                    <span className="ml-auto bg-destructive text-destructive-foreground text-xs font-semibold rounded-md min-w-[20px] h-5 flex items-center justify-center px-1.5">
-                      {counts.critical > 99 ? "99+" : counts.critical}
-                    </span>
-                  )}
-                  {counts.critical === 0 && counts.high > 0 && (
-                    <span className="ml-auto bg-severity-high text-white text-xs font-semibold rounded-md min-w-[20px] h-5 flex items-center justify-center px-1.5">
-                      {counts.high > 99 ? "99+" : counts.high}
-                    </span>
-                  )}
-                </>
-              )}
-              {badge === "trip" && tripAlertCounts && tripAlertCounts.active > 0 && (
-                <span className="ml-auto bg-severity-medium text-white text-xs font-semibold rounded-md min-w-[20px] h-5 flex items-center justify-center px-1.5">
-                  {tripAlertCounts.active > 99 ? "99+" : tripAlertCounts.active}
-                </span>
-              )}
-              {badge === "faults" && faultCounts && faultCounts.total > 0 && (
-                <span className="ml-auto bg-severity-medium text-white text-xs font-semibold rounded-md min-w-[20px] h-5 flex items-center justify-center px-1.5">
-                  {faultCounts.total > 99 ? "99+" : faultCounts.total}
-                </span>
-              )}
-              {badge === "documents" && documentCounts && documentCounts.total > 0 && (
-                <span className="ml-auto bg-severity-low text-white text-xs font-semibold rounded-md min-w-[20px] h-5 flex items-center justify-center px-1.5">
-                  {documentCounts.total > 99 ? "99+" : documentCounts.total}
-                </span>
-              )}
-              {badge === "diesel" && dieselCounts && dieselCounts.total > 0 && (
-                <span className="ml-auto bg-emerald-500 text-white text-xs font-semibold rounded-md min-w-[20px] h-5 flex items-center justify-center px-1.5">
-                  {dieselCounts.total > 99 ? "99+" : dieselCounts.total}
-                </span>
-              )}
-            </NavLink>
-          ))}
+          {NAV_ITEMS.map(({ to, icon: Icon, label, badge }) => {
+            const badgeConfig = badge ? getBadgeConfig(badge) : null;
+
+            return (
+              <NavLink
+                key={to}
+                to={to}
+                className={({ isActive }) =>
+                  cn(
+                    "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-all duration-150 group",
+                    isActive
+                      ? "bg-primary/10 text-primary font-medium"
+                      : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                  )
+                }
+              >
+                <Icon className={cn(
+                  "h-4 w-4 flex-shrink-0 transition-colors",
+                  "group-hover:text-foreground"
+                )} />
+                <span className="flex-1">{label}</span>
+                {badgeConfig && (
+                  <span className={cn(
+                    "ml-auto text-xs font-semibold rounded-md min-w-[20px] h-5 flex items-center justify-center px-1.5",
+                    badgeConfig.className
+                  )}>
+                    {badgeConfig.count > 99 ? "99+" : badgeConfig.count}
+                  </span>
+                )}
+              </NavLink>
+            );
+          })}
         </nav>
 
         {/* User + Status */}

@@ -2,11 +2,11 @@ import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { formatDistanceToNow, format } from "date-fns";
 import {
-  ArrowLeft, Check, CheckCheck, MessageSquare, Send, Clock, AlertCircle,
+  ArrowLeft, CheckCheck, MessageSquare, Send, Clock, AlertCircle,
   Truck, User, Wrench, Fuel, MapPin, Server, Package, AlertTriangle,
   DollarSign, ExternalLink,
 } from "lucide-react";
-import { useAlert, useAlertComments, useAcknowledgeAlert, useResolveAlert, useAddAlertComment } from "@/hooks/useAlerts";
+import { useAlert, useAlertComments, useResolveAlert, useAddAlertComment } from "@/hooks/useAlerts";
 import { useAuth } from "@/contexts/AuthContext";
 import SeverityBadge from "@/components/alerts/SeverityBadge";
 import { cn } from "@/lib/utils";
@@ -14,9 +14,16 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
 const SOURCE_ICONS: Record<string, React.ElementType> = {
-  vehicle: Truck, driver: User, maintenance: Wrench, fuel: Fuel,
-  geofence: MapPin, system: Server, load: Package, tyre: AlertCircle,
-  trip: MapPin, manual: AlertCircle,
+  vehicle: Truck,
+  driver: User,
+  maintenance: Wrench,
+  fuel: Fuel,
+  geofence: MapPin,
+  system: Server,
+  load: Package,
+  tyre: AlertCircle,
+  trip: MapPin,
+  manual: AlertCircle,
   // Trip alert categories
   duplicate_pod: AlertTriangle,
   load_exception: DollarSign,
@@ -24,7 +31,7 @@ const SOURCE_ICONS: Record<string, React.ElementType> = {
   fuel_anomaly: Fuel,
 };
 
-// Simplified to standard, professional border accents
+// Professional border colors
 const BORDER_COLORS: Record<string, string> = {
   critical: "border-red-600",
   high: "border-orange-500",
@@ -41,7 +48,6 @@ export default function AlertDetailPage() {
 
   const { data: alert, isLoading } = useAlert(id);
   const { data: comments = [] } = useAlertComments(id);
-  const acknowledge = useAcknowledgeAlert();
   const resolve = useResolveAlert();
   const addComment = useAddAlertComment();
 
@@ -98,23 +104,16 @@ export default function AlertDetailPage() {
   const isTripAlert = ['duplicate_pod', 'load_exception', 'trip_delay', 'fuel_anomaly'].includes(alert.category);
   const SourceIcon = SOURCE_ICONS[isTripAlert ? alert.category : alert.source_type] ?? AlertCircle;
   const isActive = alert.status === "active";
-  const isAcknowledged = alert.status === "acknowledged";
 
   const displayFleetNumber = vehicleDetails?.fleet_number || metadata.fleet_number || 'N/A';
-
-  const handleAcknowledge = async () => {
-    if (!user) return;
-    try {
-      await acknowledge.mutateAsync({ alertId: alert.id, userId: user.id });
-      toast.success("Alert officially acknowledged.");
-    } catch { toast.error("Failed to acknowledge alert."); }
-  };
 
   const handleResolve = async () => {
     try {
       await resolve.mutateAsync({ alertId: alert.id });
       toast.success("Alert marked as resolved.");
-    } catch { toast.error("Failed to resolve alert."); }
+    } catch {
+      toast.error("Failed to resolve alert.");
+    }
   };
 
   const handleComment = async () => {
@@ -122,7 +121,9 @@ export default function AlertDetailPage() {
     try {
       await addComment.mutateAsync({ alertId: alert.id, userId: user.id, comment: commentText.trim() });
       setCommentText("");
-    } catch { toast.error("Failed to post comment."); }
+    } catch {
+      toast.error("Failed to post comment.");
+    }
   };
 
   const handleViewTrip = () => {
@@ -161,10 +162,11 @@ export default function AlertDetailPage() {
                     <SeverityBadge severity={alert.severity} size="sm" />
                     <span className={cn(
                       "text-[11px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-sm border",
-                      alert.status === "active" ? "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/50 dark:text-red-400 dark:border-red-900" :
-                        alert.status === "acknowledged" ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/50 dark:text-blue-400 dark:border-blue-900" :
-                          alert.status === "resolved" ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-900" :
-                            "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-900 dark:text-slate-400 dark:border-slate-800"
+                      alert.status === "active"
+                        ? "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/50 dark:text-red-400 dark:border-red-900"
+                        : alert.status === "resolved"
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-900"
+                          : "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-900 dark:text-slate-400 dark:border-slate-800"
                     )}>
                       {alert.status}
                     </span>
@@ -177,18 +179,9 @@ export default function AlertDetailPage() {
                 </div>
               </div>
 
-              {/* Action Buttons */}
+              {/* Action Buttons - Only Resolve for active alerts */}
               <div className="flex items-center gap-3 shrink-0">
                 {isActive && (
-                  <button
-                    onClick={handleAcknowledge}
-                    disabled={acknowledge.isPending}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-border bg-background hover:bg-muted text-foreground transition-colors text-sm font-medium disabled:opacity-50"
-                  >
-                    <Check className="h-4 w-4" /> Acknowledge
-                  </button>
-                )}
-                {(isActive || isAcknowledged) && (
                   <button
                     onClick={handleResolve}
                     disabled={resolve.isPending}
@@ -207,13 +200,6 @@ export default function AlertDetailPage() {
                 <span className="font-medium text-foreground">Triggered:</span>
                 {format(new Date(alert.triggered_at), "MMM d, yyyy HH:mm")}
               </div>
-              {alert.acknowledged_at && (
-                <div className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-medium text-foreground">Acknowledged:</span>
-                  {format(new Date(alert.acknowledged_at), "MMM d, yyyy HH:mm")}
-                </div>
-              )}
               {alert.resolved_at && (
                 <div className="flex items-center gap-2">
                   <CheckCheck className="h-4 w-4 text-muted-foreground" />
@@ -298,12 +284,6 @@ export default function AlertDetailPage() {
                   <div className="space-y-1">
                     <dt className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">Flagged Costs</dt>
                     <dd className="text-sm font-medium text-foreground">{metadata.flagged_count}</dd>
-                  </div>
-                )}
-                {metadata.payment_status && (
-                  <div className="space-y-1">
-                    <dt className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">Payment Status</dt>
-                    <dd className="text-sm font-medium text-foreground capitalize">{metadata.payment_status}</dd>
                   </div>
                 )}
 

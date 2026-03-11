@@ -1,26 +1,26 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { Toaster } from "sonner";
-import { AuthProvider } from "@/contexts/AuthContext";
-import ProtectedRoute from "@/components/ProtectedRoute";
 import Layout from "@/components/Layout";
-import AuthPage from "@/pages/AuthPage";
-import AlertsPage from "@/pages/AlertsPage";
-import AlertDetailPage from "@/pages/AlertDetailPage";
-import AnalyticsPage from "@/pages/AnalyticsPage";
-import ConfigPage from "@/pages/ConfigPage";
-import NotFoundPage from "@/pages/NotFoundPage";
-import FaultsPage from "@/pages/FaultsPage";
-import TripAlertsPage from "@/pages/TripAlertsPage";
-import DocumentsPage from "@/pages/DocumentsPage";
-import DieselAlertsPage from "@/pages/DieselAlertsPage";
-import { useFaultAlerts } from "@/hooks/useFaultAlerts";
-import { useVehicleDocumentAlerts } from "@/hooks/useVehicleDocumentAlerts";
+import ProtectedRoute from "@/components/ProtectedRoute";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { ThemeProvider } from "@/contexts/ThemeContext";
 import { useDieselAlerts } from "@/hooks/useDieselAlerts";
+import { useFaultAlerts } from "@/hooks/useFaultAlerts";
 import { useMaintenanceAlerts } from "@/hooks/useMaintenanceAlerts";
 import { useTripAlerts } from "@/hooks/useTripAlerts";
-import { useQuery } from "@tanstack/react-query";
+import { useVehicleDocumentAlerts } from "@/hooks/useVehicleDocumentAlerts";
 import { supabase } from "@/integrations/supabase/client";
+import AlertDetailPage from "@/pages/AlertDetailPage";
+import AlertsPage from "@/pages/AlertsPage";
+import AnalyticsPage from "@/pages/AnalyticsPage";
+import AuthPage from "@/pages/AuthPage";
+import ConfigPage from "@/pages/ConfigPage";
+import DieselAlertsPage from "@/pages/DieselAlertsPage";
+import DocumentsPage from "@/pages/DocumentsPage";
+import FaultsPage from "@/pages/FaultsPage";
+import NotFoundPage from "@/pages/NotFoundPage";
+import TripAlertsPage from "@/pages/TripAlertsPage";
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { Toaster } from "sonner";
 
 // Define types for cost entries
 interface Cost {
@@ -253,23 +253,25 @@ function AppContent() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <BrowserRouter>
-          <Toaster
-            position="top-right"
-            richColors
-            closeButton
-            toastOptions={{
-              style: {
-                background: "hsl(222 47% 14%)",
-                border: "1px solid hsl(222 47% 22%)",
-                color: "hsl(213 31% 91%)",
-              },
-            }}
-          />
-          <AppContent />
-        </BrowserRouter>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <BrowserRouter>
+            <Toaster
+              position="top-right"
+              richColors
+              closeButton
+              toastOptions={{
+                style: {
+                  background: "hsl(222 47% 14%)",
+                  border: "1px solid hsl(222 47% 22%)",
+                  color: "hsl(213 31% 91%)",
+                },
+              }}
+            />
+            <AppContent />
+          </BrowserRouter>
+        </AuthProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

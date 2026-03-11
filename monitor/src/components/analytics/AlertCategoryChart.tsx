@@ -48,10 +48,7 @@ export default function AlertCategoryChart({ filters }: AlertCategoryChartProps)
             color: "hsl(213 31% 91%)",
             fontSize: 12,
           }}
-          formatter={(value: number, name: string) => [
-            `${value} alert${value !== 1 ? "s" : ""}`,
-            name,
-          ]}
+          formatter={(value: number) => [`${value} alert${value !== 1 ? "s" : ""}`, 'Count']}
         />
         <Legend
           formatter={(value) => (

@@ -1,4 +1,5 @@
-import { ensureAlert } from './alertUtils';
+import { ensureAlert, resolveAlert } from './alertUtils';
+import { supabase } from '@/integrations/supabase/client';
 
 export interface DieselRecordData {
   id: string;
@@ -34,6 +35,9 @@ export interface DieselAlertMetadata {
   threshold?: number;
   actual_value?: number;
   expected_value?: number;
+  days_old?: number;
+  consumption_rate?: number;
+  expected_consumption?: number;
 }
 
 /**
@@ -43,7 +47,7 @@ export async function createLowEfficiencyAlert(
   dieselRecord: DieselRecordData,
   efficiency: number,
   threshold: number = 2.0
-) {
+): Promise<string> {
   const severity = efficiency < 1.5 ? 'critical' : efficiency < 2.0 ? 'high' : 'medium';
 
   return ensureAlert({
@@ -79,7 +83,7 @@ export async function createProbeDiscrepancyAlert(
   dieselRecord: DieselRecordData,
   discrepancy: number,
   threshold: number = 5.0
-) {
+): Promise<string> {
   const severity = discrepancy > 10 ? 'critical' : discrepancy > 7 ? 'high' : 'medium';
 
   return ensureAlert({
@@ -114,7 +118,7 @@ export async function createProbeDiscrepancyAlert(
 export async function createMissingDebriefAlert(
   dieselRecord: DieselRecordData,
   daysOld: number
-) {
+): Promise<string> {
   const severity = daysOld > 7 ? 'high' : daysOld > 3 ? 'medium' : 'low';
 
   return ensureAlert({
@@ -146,7 +150,7 @@ export async function createHighConsumptionAlert(
   litresFilled: number,
   distanceTravelled: number,
   expectedConsumption?: number
-) {
+): Promise<string> {
   const consumptionRate = distanceTravelled > 0 ? litresFilled / distanceTravelled * 100 : 0; // L/100km
   const severity = consumptionRate > 50 ? 'critical' : consumptionRate > 40 ? 'high' : 'medium';
 
@@ -172,4 +176,29 @@ export async function createHighConsumptionAlert(
       issue_type: 'high_consumption',
     },
   });
+}
+
+/**
+ * Resolve all active alerts for a specific diesel record
+ */
+export async function resolveDieselRecordAlerts(recordId: string): Promise<void> {
+  console.log(`Resolving alerts for diesel record: ${recordId}`);
+
+  const { data: alerts, error } = await supabase
+    .from('alerts')
+    .select('id')
+    .eq('source_type', 'fuel')
+    .eq('source_id', recordId)
+    .eq('status', 'active');
+
+  if (error) {
+    console.error('Error fetching diesel alerts to resolve:', error);
+    return;
+  }
+
+  console.log(`Found ${alerts?.length || 0} active alerts to resolve for record ${recordId}`);
+
+  for (const alert of alerts || []) {
+    await resolveAlert(alert.id, 'Issue resolved in diesel record');
+  }
 }

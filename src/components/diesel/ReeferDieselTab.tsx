@@ -38,11 +38,14 @@ const ReeferDieselTab = () => {
 
   // Calculate totals
   const totals = useMemo(() => {
+    const validLphRecords = records.filter(r => r.litres_per_hour && r.litres_per_hour > 0);
     return {
       litres: records.reduce((sum, r) => sum + (r.litres_filled || 0), 0),
       cost: records.reduce((sum, r) => sum + (r.total_cost || 0), 0),
       hours: records.reduce((sum, r) => sum + (r.hours_operated || 0), 0),
-      avgLph: records.reduce((sum, r) => sum + (r.litres_per_hour || 0), 0) / (records.filter(r => r.litres_per_hour).length || 1),
+      avgLph: validLphRecords.length > 0
+        ? validLphRecords.reduce((sum, r) => sum + (r.litres_per_hour || 0), 0) / validLphRecords.length
+        : 0,
       count: records.length,
     };
   }, [records]);

@@ -9,12 +9,12 @@ import { useQuery } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import {
   AlertTriangle,
+  CheckCircle2,
   Clock,
   DollarSign,
   Filter,
   Flag,
   RefreshCw,
-  TrendingDown,
   Truck,
   User,
   XCircle
@@ -22,7 +22,7 @@ import {
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
-// Types for trip alerts - ONLY trip-related categories
+// Types for trip alerts - ONLY active and resolved statuses
 type TripCategory = 'duplicate_pod' | 'load_exception' | 'trip_delay';
 
 interface TripAlert {
@@ -30,10 +30,9 @@ interface TripAlert {
   title: string;
   message: string;
   severity: 'critical' | 'high' | 'medium' | 'low' | 'info';
-  status: 'active' | 'acknowledged' | 'resolved';
+  status: 'active' | 'resolved';
   category: TripCategory;
   created_at: string;
-  triggered_at: string;
   metadata: {
     trip_id?: string;
     trip_number?: string;
@@ -44,7 +43,6 @@ interface TripAlert {
     duplicate_count?: number;
     days_in_progress?: number;
     flagged_count?: number;
-    payment_status?: string;
     route?: string;
     revenue_amount?: number;
     expected_revenue?: number;
@@ -54,7 +52,7 @@ interface TripAlert {
   };
 }
 
-// Configuration for different alert types - Professional styling
+// Configuration for different alert types - payment_status removed
 const ALERT_TYPE_CONFIG = {
   duplicate_pod: {
     icon: AlertTriangle,
@@ -91,13 +89,6 @@ const ALERT_TYPE_CONFIG = {
     label: "Long Running",
     description: "Trips in progress for over 14 days"
   },
-  payment_status: {
-    icon: TrendingDown,
-    color: "text-severity-low",
-    bgColor: "bg-severity-low/10",
-    label: "Payment Issue",
-    description: "Unpaid or partially paid trips"
-  },
   flagged_trip: {
     icon: Flag,
     color: "text-destructive",
@@ -107,7 +98,7 @@ const ALERT_TYPE_CONFIG = {
   }
 };
 
-/* Professional severity colors - muted and business-appropriate */
+/* Professional severity colors */
 const SEVERITY_COLORS = {
   critical: "bg-destructive/10 text-destructive border-destructive/20",
   high: "bg-severity-high/10 text-severity-high border-severity-high/20",
@@ -123,11 +114,12 @@ export default function TripAlertsPage() {
   const { data: alerts = [], isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['trip-alerts'],
     queryFn: async () => {
-      // Fetch ONLY trip-related alerts - EXCLUDE fuel_anomaly
+      // Fetch ONLY active trip-related alerts
       const { data, error } = await supabase
         .from('alerts')
         .select('*')
         .in('category', ['duplicate_pod', 'load_exception', 'trip_delay'])
+        .eq('status', 'active') // Only fetch active alerts
         .order('severity', { ascending: false })
         .order('created_at', { ascending: false });
 
@@ -135,7 +127,6 @@ export default function TripAlertsPage() {
 
       // Filter out any remaining fuel-related alerts by issue_type
       return (data as TripAlert[]).filter(alert => {
-        // Explicitly exclude any fuel-related issue types
         const issueType = alert.metadata?.issue_type as string;
         const fuelIssueTypes = ['low_efficiency', 'probe_discrepancy', 'missing_debrief', 'high_consumption'];
 
@@ -149,12 +140,11 @@ export default function TripAlertsPage() {
     refetchInterval: 30000,
   });
 
-  // Group alerts by type (removed all, flagged_costs, and long_running)
+  // Group alerts by type - payment_status removed
   const groupedAlerts = {
     duplicate_pod: alerts.filter(a => a.metadata?.issue_type === 'duplicate_pod' || a.category === 'duplicate_pod'),
     missing_revenue: alerts.filter(a => a.metadata?.issue_type === 'missing_revenue'),
     no_costs: alerts.filter(a => a.metadata?.issue_type === 'no_costs'),
-    payment_status: alerts.filter(a => a.metadata?.issue_type === 'payment_status'),
     flagged_trip: alerts.filter(a => a.metadata?.is_flagged === true || a.metadata?.needs_review === true),
   };
 
@@ -181,19 +171,6 @@ export default function TripAlertsPage() {
     return ALERT_TYPE_CONFIG.flagged_trip;
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'active':
-        return <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4 font-semibold">ACTIVE</Badge>;
-      case 'acknowledged':
-        return <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 font-semibold bg-severity-medium/10 text-severity-medium border-severity-medium/20">ACK</Badge>;
-      case 'resolved':
-        return <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 font-semibold bg-emerald-500/10 text-emerald-600 border-emerald-500/20 dark:text-emerald-400">RESOLVED</Badge>;
-      default:
-        return null;
-    }
-  };
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -214,9 +191,9 @@ export default function TripAlertsPage() {
             <Truck className="h-4 w-4 text-primary" />
           </div>
           <div>
-            <h1 className="text-lg font-semibold">Trip Alerts</h1>
+            <h1 className="text-lg font-semibold">Active Trip Alerts</h1>
             <p className="text-xs text-muted-foreground">
-              {alerts.length} active alerts
+              {alerts.length} alert{alerts.length !== 1 ? 's' : ''} need attention
             </p>
           </div>
         </div>
@@ -234,7 +211,7 @@ export default function TripAlertsPage() {
       {/* Search */}
       <div className="relative">
         <Input
-          placeholder="Search alerts..."
+          placeholder="Search alerts by trip, fleet, or driver..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="h-8 pl-8 text-sm"
@@ -242,7 +219,7 @@ export default function TripAlertsPage() {
         <Filter className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
       </div>
 
-      {/* Tabs */}
+      {/* Tabs - payment_status removed */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="w-full h-auto flex flex-wrap gap-1 p-1">
           <TabsTrigger value="duplicate_pod" className="text-xs px-2 py-1 h-7">
@@ -254,9 +231,6 @@ export default function TripAlertsPage() {
           <TabsTrigger value="no_costs" className="text-xs px-2 py-1 h-7">
             No Costs ({groupedAlerts.no_costs.length})
           </TabsTrigger>
-          <TabsTrigger value="payment_status" className="text-xs px-2 py-1 h-7">
-            Payment ({groupedAlerts.payment_status.length})
-          </TabsTrigger>
           <TabsTrigger value="flagged_trip" className="text-xs px-2 py-1 h-7">
             Flagged ({groupedAlerts.flagged_trip.length})
           </TabsTrigger>
@@ -266,7 +240,10 @@ export default function TripAlertsPage() {
           {filteredAlerts?.length === 0 ? (
             <Card>
               <CardContent className="py-8 text-center text-muted-foreground text-sm">
-                No alerts in this category
+                <div className="flex flex-col items-center gap-2">
+                  <CheckCircle2 className="h-8 w-8 text-green-500" />
+                  <p>No active alerts in this category</p>
+                </div>
               </CardContent>
             </Card>
           ) : (
@@ -277,7 +254,7 @@ export default function TripAlertsPage() {
               return (
                 <Link
                   key={alert.id}
-                  to={`/alerts/${alert.id}`}
+                  to={`/trips/${alert.metadata?.trip_id}`}
                   className="block"
                 >
                   <Card className="hover:shadow-sm transition-shadow cursor-pointer">
@@ -292,7 +269,9 @@ export default function TripAlertsPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-0.5">
                             <span className="text-xs font-medium truncate">{alert.title}</span>
-                            {getStatusBadge(alert.status)}
+                            <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4">
+                              ACTIVE
+                            </Badge>
                           </div>
 
                           <p className="text-[11px] text-muted-foreground line-clamp-1">
@@ -335,7 +314,7 @@ export default function TripAlertsPage() {
                             )}
                           </div>
 
-                          {/* Time */}
+                          {/* Time and Severity */}
                           <div className="flex items-center justify-between mt-1">
                             <span className="text-[10px] text-muted-foreground">
                               {formatDistanceToNow(new Date(alert.created_at), { addSuffix: true })}

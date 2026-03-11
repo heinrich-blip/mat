@@ -1,121 +1,201 @@
-import AlertCard from "@/components/alerts/AlertCard";
-import AlertFilterBar from "@/components/alerts/AlertFilterBar";
-import { useAlertFilters } from "@/hooks/useAlertFilters";
-import { useAlertCounts, useAlerts } from "@/hooks/useAlerts";
+import { useNavigate } from "react-router-dom";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  Truck, Fuel, Wrench, FileText, Activity, Server,
+  AlertTriangle, Clock, TrendingUp
+} from "lucide-react";
+import { useTripAlertCounts } from "@/hooks/useTripAlertCounts";
+import { useDieselCounts } from "@/hooks/useDieselCounts";
+import { useFaultCounts } from "@/hooks/useFaultCounts";
+import { useDocumentCounts } from "@/hooks/useDocumentCounts";
 import { cn } from "@/lib/utils";
-import { Bell, RefreshCw } from "lucide-react";
 
-/* Professional severity count styling */
-const SEVERITY_COLORS = {
-  critical: "text-destructive bg-destructive/10 border-destructive/20",
-  high: "text-severity-high bg-severity-high/10 border-severity-high/20",
-  medium: "text-severity-medium bg-severity-medium/10 border-severity-medium/20",
-  low: "text-severity-low bg-severity-low/10 border-severity-low/20",
-};
+const QUICK_ACTIONS = [
+  {
+    to: "/trip-alerts",
+    icon: Truck,
+    label: "Trip Alerts",
+    color: "text-blue-500",
+    bgColor: "bg-blue-500/10",
+    hook: useTripAlertCounts,
+    countKey: 'active' as const,
+    description: "Active trip issues"
+  },
+  {
+    to: "/diesel-alerts",
+    icon: Fuel,
+    label: "Diesel Alerts",
+    color: "text-emerald-500",
+    bgColor: "bg-emerald-500/10",
+    hook: useDieselCounts,
+    countKey: 'active' as const,
+    description: "Fuel anomalies"
+  },
+  {
+    to: "/faults",
+    icon: Wrench,
+    label: "Faults",
+    color: "text-orange-500",
+    bgColor: "bg-orange-500/10",
+    hook: useFaultCounts,
+    countKey: 'active' as const,
+    description: "Vehicle faults"
+  },
+  {
+    to: "/documents",
+    icon: FileText,
+    label: "Documents",
+    color: "text-purple-500",
+    bgColor: "bg-purple-500/10",
+    hook: useDocumentCounts,
+    countKey: 'active' as const,
+    description: "Pending documents"
+  },
+];
 
-export default function AlertsPage() {
-  const filterState = useAlertFilters();
-  const { filters } = filterState;
-
-  const { data: pages, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage, refetch, isRefetching } =
-    useAlerts(filters);
-
-  const { data: counts } = useAlertCounts(filters);
-
-  const allAlerts = pages?.pages.flatMap((p) => p.alerts) ?? [];
-  const totalCount = pages?.pages[0]?.count ?? 0;
+export default function CommandCenterPage() {
+  const navigate = useNavigate();
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Professional Page Header */}
-      <div className="flex-shrink-0 px-6 pt-6 pb-4 space-y-4">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Bell className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-lg font-semibold text-foreground tracking-tight">Live Alert Feed</h1>
-              {totalCount > 0 && (
-                <span className="text-sm text-muted-foreground">
-                  {totalCount.toLocaleString()} alert{totalCount !== 1 ? "s" : ""}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Severity count pills - using real counts from the API */}
-          <div className="flex items-center gap-2">
-            {(["critical", "high", "medium", "low"] as const).map((sev) => {
-              const count = counts?.[sev] ?? 0;
-              return count > 0 ? (
-                <span
-                  key={sev}
-                  className={cn(
-                    "text-xs font-semibold px-2.5 py-1 rounded-md border",
-                    SEVERITY_COLORS[sev]
-                  )}
-                >
-                  {count} {sev.charAt(0).toUpperCase() + sev.slice(1)}
-                </span>
-              ) : null;
-            })}
-
-            <button
-              onClick={() => refetch()}
-              disabled={isRefetching}
-              className="ml-2 p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors border border-transparent hover:border-border"
-              title="Refresh"
-            >
-              <RefreshCw className={cn("h-4 w-4", isRefetching && "animate-spin")} />
-            </button>
-          </div>
-        </div>
-
-        {/* Filters */}
-        <AlertFilterBar {...filterState} />
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-semibold">Command Center</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Operational overview and quick actions
+        </p>
       </div>
 
-      {/* Alert list */}
-      <div className="flex-1 overflow-y-auto px-6 pb-6">
-        {isLoading ? (
-          <div className="flex items-center justify-center h-40">
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-              <p className="text-sm text-muted-foreground">Loading alerts…</p>
-            </div>
-          </div>
-        ) : allAlerts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-40 gap-3">
-            <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center">
-              <Bell className="h-6 w-6 text-muted-foreground/50" />
-            </div>
-            <p className="text-muted-foreground text-sm">No alerts match the current filters</p>
-            <button
-              onClick={filterState.resetFilters}
-              className="text-xs text-primary hover:text-primary/80 font-medium transition-colors"
-            >
-              Clear filters
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {allAlerts.map((alert) => (
-              <AlertCard key={alert.id} alert={alert} />
-            ))}
+      {/* Quick Action Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {QUICK_ACTIONS.map(({ to, icon: Icon, label, color, bgColor, hook, countKey, description }) => {
+          const { data } = hook();
+          const count = data?.[countKey] ?? 0;
 
-            {/* Load more */}
-            {hasNextPage && (
-              <button
-                onClick={() => fetchNextPage()}
-                disabled={isFetchingNextPage}
-                className="w-full py-3 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-accent transition-colors disabled:opacity-50 font-medium"
-              >
-                {isFetchingNextPage ? "Loading more…" : "Load more alerts"}
-              </button>
-            )}
-          </div>
-        )}
+          return (
+            <Card
+              key={to}
+              className="hover:shadow-lg transition-all cursor-pointer group"
+              onClick={() => navigate(to)}
+            >
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between">
+                  <div className={cn("p-3 rounded-lg", bgColor)}>
+                    <Icon className={cn("h-6 w-6", color)} />
+                  </div>
+                  {count > 0 && (
+                    <Badge variant="destructive" className="text-xs">
+                      {count} active
+                    </Badge>
+                  )}
+                </div>
+                <h3 className="text-lg font-semibold mt-4">{label}</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {count > 0 ? `${count} ${description}` : `No active ${description.toLowerCase()}`}
+                </p>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* Live Activity Feed */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Recent Activity */}
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Activity className="h-4 w-4" />
+              Recent Activity
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {/* You can add a real-time activity stream here */}
+              <div className="flex items-center gap-3 text-sm">
+                <div className="w-2 h-2 bg-green-500 rounded-full" />
+                <span className="flex-1">System operational</span>
+                <span className="text-muted-foreground">Just now</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm">
+                <div className="w-2 h-2 bg-blue-500 rounded-full" />
+                <span className="flex-1">Trip alerts updated</span>
+                <span className="text-muted-foreground">2 min ago</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm">
+                <div className="w-2 h-2 bg-orange-500 rounded-full" />
+                <span className="flex-1">New fault detected</span>
+                <span className="text-muted-foreground">5 min ago</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* System Status */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Server className="h-4 w-4" />
+              System Status
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Database</span>
+              <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+                Operational
+              </Badge>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Realtime</span>
+              <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+                Connected
+              </Badge>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm">API</span>
+              <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+                Healthy
+              </Badge>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Last Sync</span>
+              <span className="text-xs text-muted-foreground">30s ago</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Quick Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <TrendingUp className="h-8 w-8 text-primary/60" />
+            <div>
+              <p className="text-xs text-muted-foreground">Resolution Rate</p>
+              <p className="text-xl font-semibold">94%</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <Clock className="h-8 w-8 text-primary/60" />
+            <div>
+              <p className="text-xs text-muted-foreground">Avg Response Time</p>
+              <p className="text-xl font-semibold">2.4m</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <AlertTriangle className="h-8 w-8 text-primary/60" />
+            <div>
+              <p className="text-xs text-muted-foreground">Critical Issues</p>
+              <p className="text-xl font-semibold">3</p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

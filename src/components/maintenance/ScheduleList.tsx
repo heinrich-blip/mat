@@ -33,17 +33,9 @@ type SubcategoryFilter = FleetSubcategory | "all";
 export function ScheduleList({ schedules, onUpdate, showOverdueOnly }: ScheduleListProps) {
   const [selectedSchedule, setSelectedSchedule] = useState<MaintenanceSchedule | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  // If you plan to add UI controls for these filters later, keep them.
-  // For now, if they're not used, you can either:
-  // Option 1: Remove them if you don't need filtering UI
-  // Option 2: Keep them with the unused variable warning suppressed
-  const [priorityFilter] = useState("all"); // Remove setter if not needed
-  const [subcategoryFilter] = useState<SubcategoryFilter>("all"); // Remove setter if not needed
+  const [priorityFilter] = useState("all");
+  const [subcategoryFilter] = useState<SubcategoryFilter>("all");
   const { toast } = useToast();
-
-  /* ---------------------------------------------
-     VEHICLE LOOKUPS
-  --------------------------------------------- */
 
   const vehicleIds = useMemo(
     () => [...new Set(schedules.filter(s => s.vehicle_id).map(s => s.vehicle_id!))],
@@ -72,9 +64,35 @@ export function ScheduleList({ schedules, onUpdate, showOverdueOnly }: ScheduleL
     enabled: vehicleIds.length > 0,
   });
 
-  /* ---------------------------------------------
-     ENRICHED MODEL
-  --------------------------------------------- */
+  const { data: reeferHoursMap = {} } = useQuery({
+    queryKey: ["reefer-hours-map", vehicleIds, vehicleFleetMap],
+    queryFn: async () => {
+      if (!vehicleIds.length) return {};
+
+      const fleetNumbers = Object.values(vehicleFleetMap).filter(Boolean);
+      if (fleetNumbers.length === 0) return {};
+
+      const hoursMap: Record<string, number> = {};
+
+      for (const fleetNumber of fleetNumbers) {
+        const { data } = await supabase
+          .from("reefer_diesel_records")
+          .select("operating_hours")
+          .eq("reefer_unit", fleetNumber)
+          .not("operating_hours", "is", null)
+          .order("date", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (data?.operating_hours) {
+          hoursMap[fleetNumber] = data.operating_hours;
+        }
+      }
+
+      return hoursMap;
+    },
+    enabled: vehicleIds.length > 0 && Object.keys(vehicleFleetMap).length > 0,
+  });
 
   const enriched = useMemo(() => {
     return schedules
@@ -100,20 +118,29 @@ export function ScheduleList({ schedules, onUpdate, showOverdueOnly }: ScheduleL
           const last = schedule.last_odometer_reading || 0;
 
           if (isReefer) {
-            const current = 0; // hook for reefer hours map if needed
-            const remaining = last + schedule.odometer_interval_km - current;
-            progressPercent = Math.min(
-              ((current - last) / schedule.odometer_interval_km) * 100,
-              100
-            );
+            const current = reeferHoursMap[fleetNumber] || 0;
+            const interval = schedule.odometer_interval_km;
+            const nextServiceHours = last + interval;
+            const remaining = nextServiceHours - current;
 
-            if (remaining < 0) status = "Overdue";
-            else if (remaining <= schedule.odometer_interval_km * 0.15) status = "Due Soon";
+            if (interval > 0) {
+              const hoursUsed = Math.max(current - last, 0);
+              progressPercent = Math.min(
+                (hoursUsed / interval) * 100,
+                100
+              );
+            }
 
-            label =
-              remaining < 0
-                ? `${Math.abs(remaining).toLocaleString()} hrs overdue`
-                : `${remaining.toLocaleString()} hrs remaining`;
+            if (remaining <= 0) {
+              status = "Overdue";
+              label = `${Math.abs(remaining).toLocaleString()} hrs overdue`;
+            } else if (remaining <= interval * 0.15) {
+              status = "Due Soon";
+              label = `${remaining.toLocaleString()} hrs remaining`;
+            } else {
+              status = "Scheduled";
+              label = `${remaining.toLocaleString()} hrs remaining`;
+            }
           } else {
             const current = vehicleOdometers[schedule.vehicle_id] || 0;
             const km = calculateKmStatus(
@@ -134,11 +161,19 @@ export function ScheduleList({ schedules, onUpdate, showOverdueOnly }: ScheduleL
               : `${km.remainingKm.toLocaleString()} km remaining`;
           }
         } else if (daysUntilDue !== null) {
-          if (daysUntilDue < 0) status = "Overdue";
-          else if (daysUntilDue === 0) status = "Due Today";
-          else if (daysUntilDue <= 7) status = "Due Soon";
-
-          label = dueDate ? format(dueDate, "MMM dd, yyyy") : "";
+          if (daysUntilDue < 0) {
+            status = "Overdue";
+            label = `${Math.abs(daysUntilDue)} days overdue`;
+          } else if (daysUntilDue === 0) {
+            status = "Due Today";
+            label = "Due today";
+          } else if (daysUntilDue <= 7) {
+            status = "Due Soon";
+            label = `${daysUntilDue} days remaining`;
+          } else {
+            status = "Scheduled";
+            label = dueDate ? format(dueDate, "MMM dd, yyyy") : "";
+          }
         }
 
         return {
@@ -165,11 +200,7 @@ export function ScheduleList({ schedules, onUpdate, showOverdueOnly }: ScheduleL
 
         return matchesSearch && matchesPriority && matchesSubcategory;
       });
-  }, [schedules, vehicleFleetMap, vehicleOdometers, searchTerm, priorityFilter, subcategoryFilter, showOverdueOnly]);
-
-  /* ---------------------------------------------
-     GROUPED VIEW
-  --------------------------------------------- */
+  }, [schedules, vehicleFleetMap, vehicleOdometers, reeferHoursMap, searchTerm, priorityFilter, subcategoryFilter, showOverdueOnly]);
 
   const grouped = useMemo(() => {
     const map: Record<string, typeof enriched> = {};
@@ -180,10 +211,6 @@ export function ScheduleList({ schedules, onUpdate, showOverdueOnly }: ScheduleL
     return map;
   }, [enriched]);
 
-  /* ---------------------------------------------
-     RENDER
-  --------------------------------------------- */
-
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center gap-4 flex-wrap">
@@ -193,34 +220,6 @@ export function ScheduleList({ schedules, onUpdate, showOverdueOnly }: ScheduleL
           onChange={e => setSearchTerm(e.target.value)}
           className="max-w-xs"
         />
-
-        {/* If you plan to add filter UI controls later, uncomment this section */}
-        {/* <div className="flex gap-2">
-          <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-            <SelectTrigger className="w-[130px]">
-              <SelectValue placeholder="Priority" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Priorities</SelectItem>
-              <SelectItem value="high">High</SelectItem>
-              <SelectItem value="medium">Medium</SelectItem>
-              <SelectItem value="low">Low</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select value={subcategoryFilter} onValueChange={(value: SubcategoryFilter) => setSubcategoryFilter(value)}>
-            <SelectTrigger className="w-[130px]">
-              <SelectValue placeholder="Category" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Categories</SelectItem>
-              <SelectItem value="TRACTORS">Tractors</SelectItem>
-              <SelectItem value="TRAILERS">Trailers</SelectItem>
-              <SelectItem value="REEFERS">Reefers</SelectItem>
-              <SelectItem value="LIGHT_VEHICLES">Light Vehicles</SelectItem>
-            </SelectContent>
-          </Select>
-        </div> */}
 
         <div className="flex gap-2">
           <Button
@@ -332,6 +331,12 @@ export function ScheduleList({ schedules, onUpdate, showOverdueOnly }: ScheduleL
           </div>
         );
       })}
+
+      {enriched.length === 0 && (
+        <div className="text-center py-12 text-muted-foreground">
+          No schedules found matching your criteria.
+        </div>
+      )}
 
       {selectedSchedule && (
         <ScheduleDetailsDialog

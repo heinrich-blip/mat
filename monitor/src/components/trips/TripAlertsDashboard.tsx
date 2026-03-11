@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatDistanceToNow } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
+import { TripAlertMetadata } from '@/types/tripAlerts';
 
 export function TripAlertsDashboard() {
   const navigate = useNavigate();
@@ -17,7 +18,7 @@ export function TripAlertsDashboard() {
         .from('alerts')
         .select('*')
         .in('category', ['duplicate_pod', 'load_exception', 'trip_delay', 'fuel_anomaly'])
-        .eq('status', 'active')
+        .eq('status', 'active') // Only fetch active alerts
         .order('severity', { ascending: false })
         .order('created_at', { ascending: false })
         .limit(5);
@@ -25,7 +26,7 @@ export function TripAlertsDashboard() {
       if (error) throw error;
       return data;
     },
-    refetchInterval: 30000, // Refetch every 30 seconds
+    refetchInterval: 30000, // Refetch every 30 seconds - alerts will disappear when status changes to resolved
   });
 
   const getAlertIcon = (category: string) => {
@@ -59,14 +60,14 @@ export function TripAlertsDashboard() {
   };
 
   if (!alerts?.length) {
-    return null;
+    return null; // Don't show anything if no active alerts
   }
 
   return (
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium">Trip Alerts</CardTitle>
+          <CardTitle className="text-sm font-medium">Active Trip Alerts</CardTitle>
           <Button variant="ghost" size="sm" onClick={() => refetch()} className="h-7 px-2">
             <RefreshCw className="h-3 w-3" />
           </Button>
@@ -74,16 +75,13 @@ export function TripAlertsDashboard() {
       </CardHeader>
       <CardContent className="space-y-2">
         {alerts.map((alert) => {
-          const metadata = alert.metadata as {
-            trip_number?: string;
-            [key: string]: unknown;
-          };
+          const metadata = alert.metadata as TripAlertMetadata;
 
           return (
             <div
               key={alert.id}
               className="flex items-start gap-2 p-2 rounded-lg border bg-card hover:bg-accent/50 cursor-pointer transition-colors"
-              onClick={() => navigate(`/alerts/${alert.id}`)}
+              onClick={() => navigate(`/trips/${metadata.trip_id}`)} // Navigate directly to the trip
             >
               <div className="mt-0.5">{getAlertIcon(alert.category)}</div>
               <div className="flex-1 min-w-0">
@@ -94,7 +92,7 @@ export function TripAlertsDashboard() {
                   </Badge>
                 </div>
                 <p className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5">
-                  {metadata?.trip_number ? `Trip ${metadata.trip_number}: ` : ''}{alert.message}
+                  Trip {metadata.trip_number}: {alert.message}
                 </p>
                 <p className="text-[10px] text-muted-foreground mt-1">
                   {formatDistanceToNow(new Date(alert.created_at), { addSuffix: true })}

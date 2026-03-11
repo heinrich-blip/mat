@@ -1,11 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertTriangle, DollarSign, Clock, Fuel, RefreshCw, Truck } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { AlertTriangle, DollarSign, Clock, Fuel, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatDistanceToNow } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
+import { TripAlertMetadata } from '@/types/tripAlerts';
 
 export function TripAlertsWidget() {
   const navigate = useNavigate();
@@ -20,7 +20,7 @@ export function TripAlertsWidget() {
         .eq('status', 'active')
         .order('severity', { ascending: false })
         .order('created_at', { ascending: false })
-        .limit(5);
+        .limit(3); // Show fewer in widget
 
       if (error) throw error;
       return data;
@@ -39,34 +39,28 @@ export function TripAlertsWidget() {
       case 'fuel_anomaly':
         return <Fuel className="h-4 w-4 text-orange-500" />;
       default:
-        return <Truck className="h-4 w-4 text-muted-foreground" />;
-    }
-  };
-
-  const getSeverityColor = (severity: string) => {
-    switch (severity) {
-      case 'critical':
-        return 'bg-destructive/10 text-destructive border-destructive/20';
-      case 'high':
-        return 'bg-orange-500/10 text-orange-500 border-orange-500/20';
-      case 'medium':
-        return 'bg-amber-500/10 text-amber-500 border-amber-500/20';
-      case 'low':
-        return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
-      default:
-        return 'bg-muted text-muted-foreground border-border';
+        return <AlertTriangle className="h-4 w-4 text-muted-foreground" />;
     }
   };
 
   if (!alerts?.length) {
-    return null;
+    return (
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium">Trip Alerts</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-xs text-muted-foreground text-center py-2">No active alerts</p>
+        </CardContent>
+      </Card>
+    );
   }
 
   return (
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium">Trip Alerts</CardTitle>
+          <CardTitle className="text-sm font-medium">Active Alerts ({alerts.length})</CardTitle>
           <Button variant="ghost" size="sm" onClick={() => refetch()} className="h-7 px-2">
             <RefreshCw className="h-3 w-3" />
           </Button>
@@ -74,30 +68,19 @@ export function TripAlertsWidget() {
       </CardHeader>
       <CardContent className="space-y-2">
         {alerts.map((alert) => {
-          const metadata = alert.metadata as {
-            trip_number?: string;
-            [key: string]: unknown;
-          };
+          const metadata = alert.metadata as TripAlertMetadata;
 
           return (
             <div
               key={alert.id}
               className="flex items-start gap-2 p-2 rounded-lg border bg-card hover:bg-accent/50 cursor-pointer transition-colors"
-              onClick={() => navigate(`/alerts/${alert.id}`)}
+              onClick={() => navigate(`/trips/${metadata.trip_id}`)}
             >
               <div className="mt-0.5">{getAlertIcon(alert.category)}</div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="text-xs font-medium truncate">{alert.title}</p>
-                  <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${getSeverityColor(alert.severity)}`}>
-                    {alert.severity}
-                  </Badge>
-                </div>
-                <p className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5">
-                  {metadata?.trip_number ? `Trip ${metadata.trip_number}: ` : ''}{alert.message}
-                </p>
-                <p className="text-[10px] text-muted-foreground mt-1">
-                  {formatDistanceToNow(new Date(alert.created_at), { addSuffix: true })}
+                <p className="text-xs font-medium truncate">{alert.title}</p>
+                <p className="text-[10px] text-muted-foreground truncate">
+                  Trip {metadata.trip_number} • {formatDistanceToNow(new Date(alert.created_at), { addSuffix: true })}
                 </p>
               </div>
             </div>

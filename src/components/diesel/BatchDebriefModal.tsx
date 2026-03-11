@@ -5,7 +5,7 @@ import { Input, TextArea } from '@/components/ui/form-elements';
 import Modal from '@/components/ui/modal';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { formatCurrency, formatDate, formatNumber } from '@/lib/formatters';
-import { AlertCircle, CheckCircle2, FileText, Loader2, MessageCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle2, FileText, Loader2, MessageCircle, Share2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 export interface TrailerFuelData {
@@ -37,7 +37,7 @@ export interface DieselRecord {
   debrief_notes?: string;
   debrief_signed_by?: string;
   debrief_signed?: boolean;
-  whatsapp_shared?: boolean; // Add this field to track WhatsApp sharing
+  whatsapp_shared?: boolean;
 }
 
 export interface BatchDebriefData {
@@ -46,6 +46,7 @@ export interface BatchDebriefData {
   debrief_signed_by: string;
   debrief_signed_at: string;
   debrief_date: string;
+  whatsapp_shared?: boolean;
 }
 
 export interface BatchDebriefModalProps {
@@ -57,11 +58,44 @@ export interface BatchDebriefModalProps {
   fleetNumber: string;
   /** Callback to complete multiple debriefs at once */
   onBatchDebrief: (debriefData: BatchDebriefData) => Promise<void>;
-  /** Callback to share multiple debriefs via WhatsApp */
-  onBatchWhatsappShare?: (recordIds: string[], phoneNumber?: string) => Promise<void>;
-  /** Optional callback to track when WhatsApp is shared for a record */
-  onWhatsappShared?: (recordId: string) => void;
+  /** Optional callback to track when WhatsApp is shared for records */
+  onWhatsappShared?: (recordIds: string[]) => void;
+  /** Optional callback to refresh data after debrief */
+  onRefresh?: () => void;
 }
+
+/** Normalise a phone number to international format for WhatsApp */
+const formatPhoneForWhatsApp = (raw: string): string => {
+  // Remove all non-digit characters
+  const digits = raw.replace(/\D/g, '');
+
+  // If it's empty, return empty
+  if (!digits) return '';
+
+  // South African number handling
+  if (digits.startsWith('0') && digits.length === 10) {
+    // Convert 0821234567 -> 27821234567
+    return '27' + digits.slice(1);
+  }
+
+  if (digits.startsWith('27') && digits.length === 11) {
+    // Already has country code
+    return digits;
+  }
+
+  if (digits.startsWith('+27')) {
+    // Remove the +
+    return digits.slice(1);
+  }
+
+  // If it's just digits, assume it's a local number and add SA code
+  if (digits.length === 9) {
+    return '27' + digits;
+  }
+
+  // Return as-is if we can't determine
+  return digits;
+};
 
 const BatchDebriefModal = ({
   isOpen,
@@ -69,8 +103,8 @@ const BatchDebriefModal = ({
   dieselRecords,
   fleetNumber,
   onBatchDebrief,
-  onBatchWhatsappShare,
   onWhatsappShared,
+  onRefresh,
 }: BatchDebriefModalProps) => {
   const [formData, setFormData] = useState({
     debrief_notes: '',
@@ -86,19 +120,23 @@ const BatchDebriefModal = ({
   const [operationError, setOperationError] = useState<string | null>(null);
   const [operationSuccess, setOperationSuccess] = useState(false);
   const [shareSuccess, setShareSuccess] = useState(false);
+  const [whatsappTestStatus, setWhatsappTestStatus] = useState<string | null>(null);
 
-  // Filter out already debriefed records with useMemo to prevent recreation on every render
-  const pendingRecords = useMemo(() =>
-    dieselRecords?.filter(record => !record.debrief_signed) || [],
-    [dieselRecords]
+  // Filter records by the specific fleet number AND only pending (not debriefed)
+  const fleetRecords = useMemo(() =>
+    dieselRecords?.filter(record =>
+      record.fleet_number === fleetNumber && !record.debrief_signed
+    ) || [],
+    [dieselRecords, fleetNumber]
   );
 
   // Get records that haven't been shared on WhatsApp yet
   const unsharedRecords = useMemo(() =>
-    pendingRecords.filter(record => !record.whatsapp_shared),
-    [pendingRecords]
+    fleetRecords.filter(record => !record.whatsapp_shared),
+    [fleetRecords]
   );
 
+  // Reset state when modal opens ONLY, not when records change
   useEffect(() => {
     if (isOpen) {
       setFormData({
@@ -112,18 +150,19 @@ const BatchDebriefModal = ({
       setOperationError(null);
       setOperationSuccess(false);
       setShareSuccess(false);
+      setWhatsappTestStatus(null);
     }
-  }, [isOpen]);
+  }, [isOpen]); // Removed fleetRecords dependency
 
   // Handle select all checkbox
   useEffect(() => {
     if (selectAll) {
-      const allIds = new Set(pendingRecords.map(record => record.id));
+      const allIds = new Set(fleetRecords.map(record => record.id));
       setSelectedRecords(allIds);
     } else {
       setSelectedRecords(new Set());
     }
-  }, [selectAll, pendingRecords]);
+  }, [selectAll, fleetRecords]);
 
   const handleSelectRecord = (recordId: string, checked: boolean) => {
     const newSelected = new Set(selectedRecords);
@@ -136,23 +175,214 @@ const BatchDebriefModal = ({
     setSelectedRecords(newSelected);
   };
 
-  const validate = () => {
+  const validate = (requireSignature: boolean = true) => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.debrief_signed_by) {
+    if (requireSignature && !formData.debrief_signed_by) {
       newErrors.debrief_signed_by = 'Signature name is required';
     }
 
     if (selectedRecords.size === 0) {
-      newErrors.records = 'Please select at least one record to debrief';
+      newErrors.records = 'Please select at least one record to process';
     }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
+  /**
+   * Test WhatsApp number formatting
+   */
+  const testWhatsAppNumber = () => {
+    if (!formData.whatsapp_phone) {
+      setWhatsappTestStatus('Please enter a phone number');
+      return;
+    }
+
+    const formatted = formatPhoneForWhatsApp(formData.whatsapp_phone);
+    const testUrl = `https://wa.me/${formatted}`;
+
+    setWhatsappTestStatus(`Formatted: ${formatted}`);
+
+    // Open test URL in new tab (will open WhatsApp if installed)
+    window.open(testUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  /**
+   * Generate WhatsApp message for a single record (without PDF)
+   */
+  const generateWhatsAppMessage = (record: DieselRecord): string => {
+    // Ensure currency is properly typed
+    const currency = (record.currency as 'ZAR' | 'USD') || 'ZAR';
+
+    const lines = [
+      '🚛 *Diesel Debrief Report*',
+      `Fleet: ${record.fleet_number}`,
+      `Driver: ${record.driver_name || 'N/A'}`,
+      `Date: ${formatDate(record.date)}`,
+      `Station: ${record.fuel_station}`,
+      `Litres: ${formatNumber(record.litres_filled)} L`,
+      `Cost: ${formatCurrency(record.total_cost, currency)}`,
+    ];
+
+    if (record.distance_travelled) {
+      lines.push(`Distance: ${formatNumber(record.distance_travelled)} km`);
+    }
+
+    if (record.km_per_litre) {
+      lines.push(`Efficiency: ${formatNumber(record.km_per_litre, 2)} km/L`);
+    }
+
+    if (formData.debrief_notes) {
+      lines.push(`\nNotes: ${formData.debrief_notes}`);
+    }
+
+    lines.push(`\n✅ Debrief signed by ${formData.debrief_signed_by}`);
+    lines.push('_This is a batch debrief confirmation._');
+
+    return lines.join('\n');
+  };
+
+  /**
+   * Share a single record via WhatsApp (text only, no PDF)
+   */
+  const shareSingleRecord = async (record: DieselRecord, phoneNumber: string) => {
+    const message = generateWhatsAppMessage(record);
+    const formattedPhone = formatPhoneForWhatsApp(phoneNumber);
+
+    console.log('Sharing single record via WhatsApp:', { phoneNumber, formattedPhone, messageLength: message.length });
+
+    // Open WhatsApp with the message
+    const waUrl = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`;
+    window.open(waUrl, '_blank', 'noopener,noreferrer');
+
+    return true;
+  };
+
+  /**
+   * Share multiple records with a summary message (text only, no PDFs)
+   */
+  const shareMultipleRecords = async (records: DieselRecord[], phoneNumber: string) => {
+    // Create a summary message for all records
+    const summary = records.map((r, index) => {
+      const currency = (r.currency as 'ZAR' | 'USD') || 'ZAR';
+      const lines = [
+        `${index + 1}. *Fleet ${r.fleet_number}* - ${formatDate(r.date)}`,
+        `   Driver: ${r.driver_name || 'N/A'}`,
+        `   Station: ${r.fuel_station}`,
+        `   Litres: ${formatNumber(r.litres_filled)} L`,
+        `   Cost: ${formatCurrency(r.total_cost, currency)}`,
+      ];
+
+      if (r.km_per_litre) {
+        lines.push(`   Efficiency: ${formatNumber(r.km_per_litre, 2)} km/L`);
+      }
+
+      return lines.join('\n');
+    }).join('\n\n');
+
+    const message = [
+      '🚛 *Batch Diesel Debrief Report*',
+      `Records: ${records.length}`,
+      `Signed by: ${formData.debrief_signed_by}`,
+      `Date: ${formatDate(new Date().toISOString())}`,
+      '',
+      '*SUMMARY:*',
+      summary,
+      '',
+      '_All records have been debriefed in batch._',
+    ].join('\n');
+
+    const formattedPhone = formatPhoneForWhatsApp(phoneNumber);
+    console.log('Sharing multiple records via WhatsApp:', { phoneNumber, formattedPhone, recordsCount: records.length });
+
+    // Open WhatsApp with the summary message
+    const waUrl = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`;
+    window.open(waUrl, '_blank', 'noopener,noreferrer');
+
+    return true;
+  };
+
+  /**
+   * Share selected records via WhatsApp AND mark them as debriefed
+   */
+  const handleBatchWhatsappShare = async () => {
+    if (!validate(true)) return;
+
+    // Validate phone number
+    if (!formData.whatsapp_phone) {
+      setErrors({ ...errors, whatsapp_phone: 'WhatsApp number is required for sharing' });
+      return;
+    }
+
+    setIsSharing(true);
+    setOperationError(null);
+    setWhatsappTestStatus(null);
+
+    try {
+      const recordIds = Array.from(selectedRecords);
+      const selectedRecordsData = fleetRecords.filter(r => recordIds.includes(r.id));
+
+      // Create the batch debrief data
+      const batchData: BatchDebriefData = {
+        recordIds,
+        debrief_notes: formData.debrief_notes,
+        debrief_signed_by: formData.debrief_signed_by,
+        debrief_signed_at: new Date().toISOString(),
+        debrief_date: new Date().toISOString().split('T')[0],
+        whatsapp_shared: true, // Mark as shared via WhatsApp
+      };
+
+      console.log('Starting batch debrief with WhatsApp:', {
+        recordCount: recordIds.length,
+        phoneNumber: formData.whatsapp_phone
+      });
+
+      // First, mark records as debriefed in the database
+      await onBatchDebrief(batchData);
+
+      // Then share via WhatsApp (text only, no PDFs)
+      const phoneNumber = formData.whatsapp_phone;
+
+      if (selectedRecordsData.length === 1) {
+        // Single record - share text only
+        const record = selectedRecordsData[0];
+        await shareSingleRecord(record, phoneNumber);
+      } else {
+        // Multiple records - create a summary message
+        await shareMultipleRecords(selectedRecordsData, phoneNumber);
+      }
+
+      // Call onWhatsappShared with all recordIds if provided
+      if (onWhatsappShared && recordIds.length > 0) {
+        onWhatsappShared(recordIds);
+      }
+
+      // Refresh parent data
+      if (onRefresh) {
+        await onRefresh();
+      }
+
+      setShareSuccess(true);
+      setOperationSuccess(true);
+
+      // Close modal after success
+      setTimeout(() => {
+        onClose();
+      }, 2000);
+    } catch (error) {
+      console.error('Batch WhatsApp share failed:', error);
+      setOperationError(error instanceof Error ? error.message : 'Failed to share via WhatsApp');
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  /**
+   * Traditional batch debrief without WhatsApp
+   */
   const handleBatchDebrief = async () => {
-    if (!validate()) return;
+    if (!validate(true)) return;
 
     setIsProcessing(true);
     setOperationError(null);
@@ -166,61 +396,22 @@ const BatchDebriefModal = ({
         debrief_date: new Date().toISOString().split('T')[0],
       };
 
-      console.log('Batch debriefing records:', batchData);
-
       await onBatchDebrief(batchData);
 
-      console.log('Batch debrief completed successfully');
+      // Refresh parent data if callback provided
+      if (onRefresh) {
+        await onRefresh();
+      }
 
       setOperationSuccess(true);
 
-      // Close modal after successful completion
       setTimeout(() => {
         onClose();
       }, 1500);
     } catch (error) {
-      console.error('Batch debrief failed:', error);
       setOperationError(error instanceof Error ? error.message : 'Failed to complete batch debrief');
     } finally {
       setIsProcessing(false);
-    }
-  };
-
-  const handleBatchWhatsappShare = async () => {
-    if (selectedRecords.size === 0) {
-      setErrors({ records: 'Please select at least one record to share' });
-      return;
-    }
-
-    if (!onBatchWhatsappShare) {
-      setOperationError('WhatsApp sharing is not available');
-      return;
-    }
-
-    setIsSharing(true);
-    setOperationError(null);
-
-    try {
-      const recordIds = Array.from(selectedRecords);
-      const phoneNumber = formData.whatsapp_phone?.trim() || undefined;
-      await onBatchWhatsappShare(recordIds, phoneNumber);
-
-      // Call onWhatsappShared for each record if provided
-      if (onWhatsappShared) {
-        recordIds.forEach(id => onWhatsappShared(id));
-      }
-
-      setShareSuccess(true);
-
-      // Clear success message after 3 seconds
-      setTimeout(() => {
-        setShareSuccess(false);
-      }, 3000);
-    } catch (error) {
-      console.error('Batch WhatsApp share failed:', error);
-      setOperationError(error instanceof Error ? error.message : 'Failed to share via WhatsApp');
-    } finally {
-      setIsSharing(false);
     }
   };
 
@@ -247,55 +438,48 @@ const BatchDebriefModal = ({
       isOpen={isOpen}
       onClose={onClose}
       title={`Batch Debrief - Fleet ${fleetNumber}`}
-      maxWidth="4xl"
+      maxWidth="3xl"
     >
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-3 max-h-[80vh]">
         {operationSuccess && (
-          <Alert className="bg-success/10 border-success">
+          <Alert className="bg-success/10 border-success py-2">
             <CheckCircle2 className="h-4 w-4 text-success" />
-            <AlertDescription className="text-success">
-              Batch debrief completed successfully! {selectedRecords.size} records processed.
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {shareSuccess && (
-          <Alert className="bg-green-500/10 border-green-500">
-            <MessageCircle className="h-4 w-4 text-green-500" />
-            <AlertDescription className="text-green-500">
-              {selectedRecords.size} record(s) shared via WhatsApp successfully!
+            <AlertDescription className="text-success text-sm">
+              {shareSuccess
+                ? `${selectedRecords.size} record(s) shared via WhatsApp and debriefed successfully!`
+                : `Batch debrief completed successfully! ${selectedRecords.size} records processed.`}
             </AlertDescription>
           </Alert>
         )}
 
         {operationError && (
-          <Alert variant="destructive">
+          <Alert variant="destructive" className="py-2">
             <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{operationError}</AlertDescription>
+            <AlertDescription className="text-sm">{operationError}</AlertDescription>
           </Alert>
         )}
 
         {errors.records && (
-          <Alert variant="destructive">
+          <Alert variant="destructive" className="py-2">
             <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{errors.records}</AlertDescription>
+            <AlertDescription className="text-sm">{errors.records}</AlertDescription>
           </Alert>
         )}
 
-        {/* Summary Card */}
-        <div className="bg-muted p-4 rounded-lg">
+        {/* Summary Card - More compact */}
+        <div className="bg-muted p-3 rounded-lg">
           <div className="flex justify-between items-center">
             <div>
-              <h4 className="font-medium">Fleet {fleetNumber}</h4>
-              <p className="text-sm text-muted-foreground">
-                {pendingRecords.length} pending records • {selectedRecords.size} selected
+              <h4 className="font-medium text-sm">Fleet {fleetNumber}</h4>
+              <p className="text-xs text-muted-foreground">
+                {fleetRecords.length} pending • {selectedRecords.size} selected
                 {unsharedRecords.length > 0 && ` • ${unsharedRecords.length} not shared`}
               </p>
             </div>
-            <div className="text-sm bg-background px-3 py-1 rounded-full">
-              Total Litres: {formatNumber(
+            <div className="text-xs bg-background px-2 py-1 rounded-full">
+              Total: {formatNumber(
                 Array.from(selectedRecords).reduce((sum, id) => {
-                  const record = dieselRecords?.find(r => r.id === id);
+                  const record = fleetRecords?.find(r => r.id === id);
                   return sum + (record?.litres_filled || 0);
                 }, 0)
               )} L
@@ -303,158 +487,183 @@ const BatchDebriefModal = ({
           </div>
         </div>
 
-        {/* Records Table */}
-        <div className="border rounded-lg overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-12">
-                  <Checkbox
-                    checked={selectAll}
-                    onCheckedChange={(checked) => setSelectAll(checked as boolean)}
-                    disabled={pendingRecords.length === 0}
-                  />
-                </TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Driver</TableHead>
-                <TableHead>Station</TableHead>
-                <TableHead className="text-right">Litres</TableHead>
-                <TableHead className="text-right">Cost</TableHead>
-                <TableHead className="text-right">km/L</TableHead>
-                <TableHead>Issues</TableHead>
-                <TableHead>WhatsApp</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {pendingRecords.length === 0 ? (
+        {/* Records Table - Scrollable with fixed height */}
+        <div className="border rounded-lg overflow-hidden max-h-[300px]">
+          <div className="overflow-auto h-full">
+            <Table>
+              <TableHeader className="sticky top-0 bg-background z-10">
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-                    No pending records to debrief for this fleet
-                  </TableCell>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={selectAll}
+                      onCheckedChange={(checked) => setSelectAll(checked as boolean)}
+                      disabled={fleetRecords.length === 0}
+                    />
+                  </TableHead>
+                  <TableHead className="text-xs">Date</TableHead>
+                  <TableHead className="text-xs">Driver</TableHead>
+                  <TableHead className="text-xs">Station</TableHead>
+                  <TableHead className="text-right text-xs">Litres</TableHead>
+                  <TableHead className="text-right text-xs">Cost</TableHead>
+                  <TableHead className="text-right text-xs">km/L</TableHead>
+                  <TableHead className="text-xs">Issues</TableHead>
+                  <TableHead className="text-xs">WhatsApp</TableHead>
                 </TableRow>
-              ) : (
-                pendingRecords.map((record) => {
-                  const issueCount = getPerformanceIssueCount(record);
-                  return (
-                    <TableRow key={record.id}>
-                      <TableCell>
-                        <Checkbox
-                          checked={selectedRecords.has(record.id)}
-                          onCheckedChange={(checked) =>
-                            handleSelectRecord(record.id, checked as boolean)
-                          }
-                        />
-                      </TableCell>
-                      <TableCell>{formatDate(record.date)}</TableCell>
-                      <TableCell>{record.driver_name || 'N/A'}</TableCell>
-                      <TableCell>{record.fuel_station}</TableCell>
-                      <TableCell className="text-right">
-                        {formatNumber(record.litres_filled)} L
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(record.total_cost, record.currency as 'ZAR' | 'USD')}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {record.km_per_litre ? formatNumber(record.km_per_litre, 2) : '-'}
-                      </TableCell>
-                      <TableCell>
-                        {issueCount > 0 && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full bg-destructive/10 text-destructive text-xs">
-                            {issueCount} issue{issueCount > 1 ? 's' : ''}
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {getWhatsappStatus(record)}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {fleetRecords.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={9} className="text-center py-6 text-muted-foreground text-sm">
+                      No pending records to debrief for fleet {fleetNumber}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  fleetRecords.map((record) => {
+                    const issueCount = getPerformanceIssueCount(record);
+                    const currency = (record.currency as 'ZAR' | 'USD') || 'ZAR';
+
+                    return (
+                      <TableRow key={record.id} className="text-sm">
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedRecords.has(record.id)}
+                            onCheckedChange={(checked) =>
+                              handleSelectRecord(record.id, checked as boolean)
+                            }
+                          />
+                        </TableCell>
+                        <TableCell className="text-xs">{formatDate(record.date)}</TableCell>
+                        <TableCell className="text-xs">{record.driver_name || 'N/A'}</TableCell>
+                        <TableCell className="text-xs">{record.fuel_station}</TableCell>
+                        <TableCell className="text-right text-xs">
+                          {formatNumber(record.litres_filled)} L
+                        </TableCell>
+                        <TableCell className="text-right text-xs">
+                          {formatCurrency(record.total_cost, currency)}
+                        </TableCell>
+                        <TableCell className="text-right text-xs">
+                          {record.km_per_litre ? formatNumber(record.km_per_litre, 1) : '-'}
+                        </TableCell>
+                        <TableCell>
+                          {issueCount > 0 && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-destructive/10 text-destructive text-[10px]">
+                              {issueCount}
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {getWhatsappStatus(record)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </div>
 
-        {/* Debrief Form */}
-        <div className="space-y-4 mt-4">
+        {/* Debrief Form - Compact */}
+        <div className="space-y-2 mt-1">
           <TextArea
-            label="Debrief Notes (applies to all selected records)"
+            label="Notes"
             value={formData.debrief_notes}
             onChange={(e) => setFormData({ ...formData, debrief_notes: e.target.value })}
-            disabled={isProcessing}
-            rows={3}
-            placeholder="Enter any common notes for all selected records..."
+            disabled={isProcessing || isSharing}
+            rows={2}
+            placeholder="Optional notes..."
+            className="text-sm"
           />
 
-          <Input
-            label="Signed By"
-            value={formData.debrief_signed_by}
-            onChange={(e) => setFormData({ ...formData, debrief_signed_by: e.target.value })}
-            error={errors.debrief_signed_by}
-            disabled={isProcessing}
-            placeholder="Enter your name to sign off"
-            required
-          />
-
-          {onBatchWhatsappShare && (
+          <div className="grid grid-cols-2 gap-2">
             <Input
-              label="WhatsApp Number (optional)"
-              value={formData.whatsapp_phone}
-              onChange={(e) => setFormData({ ...formData, whatsapp_phone: e.target.value })}
-              disabled={isSharing}
-              placeholder="e.g., 27600123456 (with country code)"
-              type="tel"
+              label="Signed By"
+              value={formData.debrief_signed_by}
+              onChange={(e) => setFormData({ ...formData, debrief_signed_by: e.target.value })}
+              error={errors.debrief_signed_by}
+              disabled={isProcessing || isSharing}
+              placeholder="Your name"
+              required
+              className="text-sm"
             />
-          )}
+
+            <div className="space-y-1">
+              <Input
+                label="WhatsApp Number"
+                value={formData.whatsapp_phone}
+                onChange={(e) => setFormData({ ...formData, whatsapp_phone: e.target.value })}
+                error={errors.whatsapp_phone}
+                disabled={isSharing}
+                placeholder="0821234567"
+                type="tel"
+                className="text-sm"
+              />
+              {formData.whatsapp_phone && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={testWhatsAppNumber}
+                  className="text-[10px] h-5 px-1 text-muted-foreground"
+                >
+                  <MessageCircle className="h-3 w-3 mr-1" />
+                  Test number
+                </Button>
+              )}
+              {whatsappTestStatus && (
+                <p className="text-[10px] text-green-600">{whatsappTestStatus}</p>
+              )}
+            </div>
+          </div>
         </div>
 
-        <Alert>
+        <Alert className="py-2">
           <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            By signing this batch debrief, you confirm that you have reviewed all selected diesel records
-            and any issues have been noted. This will mark {selectedRecords.size} record(s) as completed.
+          <AlertDescription className="text-xs">
+            This will mark {selectedRecords.size} record(s) as completed.
           </AlertDescription>
         </Alert>
 
-        {/* Footer Actions */}
-        <div className="flex justify-end gap-2 pt-4 border-t">
-          {onBatchWhatsappShare && (
-            <Button
-              variant="outline"
-              onClick={handleBatchWhatsappShare}
-              disabled={isSharing || isProcessing || selectedRecords.size === 0}
-              className="gap-2 text-green-600 border-green-200 hover:bg-green-50"
-            >
-              {isSharing ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Sharing...
-                </>
-              ) : (
-                <>
-                  <MessageCircle className="h-4 w-4" />
-                  Share via WhatsApp ({selectedRecords.size})
-                </>
-              )}
-            </Button>
-          )}
-          <Button variant="outline" onClick={onClose} disabled={isProcessing || isSharing}>
+        {/* Footer Actions - Compact */}
+        <div className="flex justify-end gap-2 pt-2 border-t">
+          <Button variant="outline" onClick={onClose} disabled={isProcessing || isSharing} size="sm">
             Cancel
           </Button>
+
           <Button
-            onClick={handleBatchDebrief}
-            disabled={isProcessing || isSharing || selectedRecords.size === 0}
-            className="gap-2"
+            variant="outline"
+            onClick={handleBatchWhatsappShare}
+            disabled={isSharing || isProcessing || selectedRecords.size === 0}
+            className="gap-1 text-green-600 border-green-200 hover:bg-green-50 text-xs h-8"
+            size="sm"
           >
-            {isProcessing ? (
+            {isSharing ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Processing {selectedRecords.size} records...
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Sharing...
               </>
             ) : (
               <>
-                <FileText className="h-4 w-4" />
-                Complete Batch Debrief ({selectedRecords.size})
+                <Share2 className="h-3 w-3" />
+                WhatsApp & Debrief ({selectedRecords.size})
+              </>
+            )}
+          </Button>
+
+          <Button
+            onClick={handleBatchDebrief}
+            disabled={isProcessing || isSharing || selectedRecords.size === 0}
+            className="gap-1 text-xs h-8"
+            size="sm"
+          >
+            {isProcessing ? (
+              <>
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              <>
+                <FileText className="h-3 w-3" />
+                Debrief ({selectedRecords.size})
               </>
             )}
           </Button>

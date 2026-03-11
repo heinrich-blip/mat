@@ -1,7 +1,7 @@
 // ─── Alert Types ─────────────────────────────────────────────────────────────
 
 export type AlertSeverity = "critical" | "high" | "medium" | "low" | "info";
-export type AlertStatus = "active" | "acknowledged" | "resolved" | "suppressed";
+export type AlertStatus = "active" | "resolved" | "suppressed"; // Removed "acknowledged"
 export type AlertCategory =
   | "speed_violation"
   | "geofence_breach"
@@ -39,9 +39,10 @@ export interface Alert {
   category: AlertCategory;
   severity: AlertSeverity;
   metadata: Record<string, unknown>;
-  status: AlertStatus;
-  acknowledged_by: string | null;
-  acknowledged_at: string | null;
+  status: AlertStatus; // Now only "active" | "resolved" | "suppressed"
+  // Keep these fields for schema compatibility but mark as optional/never used
+  acknowledged_by?: string | null;  // Made optional
+  acknowledged_at?: string | null;  // Made optional
   resolved_at: string | null;
   resolution_note: string | null;
   triggered_at: string;
@@ -49,6 +50,7 @@ export interface Alert {
   created_at: string;
 }
 
+// Update AlertComment (no changes needed)
 export interface AlertComment {
   id: string;
   alert_id: string;
@@ -110,10 +112,10 @@ export interface AlertFilters {
   severities: AlertSeverity[];
   categories: AlertCategory[];
   sourceTypes: AlertSourceType[];
-  statuses: AlertStatus[];
+  statuses: AlertStatus[]; // Now only includes "active" | "resolved" | "suppressed"
   searchQuery: string;
-  selectedVehicle: string | null;      // Added
-  selectedFleets: string[];            // Added
+  selectedVehicle: string | null;
+  selectedFleets: string[];
 }
 
 export const DEFAULT_FILTERS: AlertFilters = {
@@ -123,10 +125,10 @@ export const DEFAULT_FILTERS: AlertFilters = {
   severities: [],
   categories: [],
   sourceTypes: [],
-  statuses: ["active"],
+  statuses: ["active"], // Only active by default
   searchQuery: "",
-  selectedVehicle: null,               // Added
-  selectedFleets: [],                   // Added
+  selectedVehicle: null,
+  selectedFleets: [],
 };
 
 // ─── User / Auth Types ────────────────────────────────────────────────────────

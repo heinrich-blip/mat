@@ -25,35 +25,39 @@ export default function RealtimeStatusBadge() {
     };
   }, []);
 
-  /* Professional status colors */
+  /* Professional status colors - simplified */
   const dotColor =
-    status === "connected" ? "bg-emerald-500" :
-      status === "connecting" ? "bg-severity-medium" :
-        "bg-destructive";
+    status === "connected" ? "bg-green-500" :
+      status === "connecting" ? "bg-amber-500" :
+        "bg-red-500";
 
   const label =
-    status === "connected" ? "LIVE" :
-      status === "connecting" ? "Connecting…" :
+    status === "connected" ? "Live" :
+      status === "connecting" ? "Connecting" :
         "Offline";
 
   const secondsAgo = Math.floor((Date.now() - lastUpdate.getTime()) / 1000);
-  const timeLabel = secondsAgo < 5 ? "just now" : `${secondsAgo}s ago`;
+  const timeLabel = secondsAgo < 60
+    ? secondsAgo < 5
+      ? "just now"
+      : `${secondsAgo}s ago`
+    : `${Math.floor(secondsAgo / 60)}m ago`;
 
   return (
-    <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-secondary/50 border border-border">
+    <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-secondary/50 border border-border text-xs">
       <span
         className={cn(
-          "w-2 h-2 rounded-full flex-shrink-0",
+          "w-1.5 h-1.5 rounded-full",
           dotColor,
-          status === "connected" && "animate-pulse-subtle"
+          status === "connected" && "animate-pulse"
         )}
       />
-      <span className="text-xs font-medium text-foreground">
+      <span className="font-medium text-foreground">
         {label}
       </span>
       {status === "connected" && (
-        <span className="text-xs text-muted-foreground tabular-nums">
-          {timeLabel}
+        <span className="text-muted-foreground ml-0.5">
+          · {timeLabel}
         </span>
       )}
     </div>

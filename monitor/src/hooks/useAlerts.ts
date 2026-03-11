@@ -116,27 +116,6 @@ export function useAlertComments(alertId: string) {
 
 // ─── Mutations ────────────────────────────────────────────────────────────────
 
-export function useAcknowledgeAlert() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ alertId, userId }: { alertId: string; userId: string }) => {
-      const { error } = await supabase
-        .from("alerts")
-        .update({
-          status: "acknowledged",
-          acknowledged_by: userId,
-          acknowledged_at: new Date().toISOString(),
-        })
-        .eq("id", alertId);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["alerts"] });
-      queryClient.invalidateQueries({ queryKey: ["alert-counts"] });
-    },
-  });
-}
-
 export function useResolveAlert() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -160,6 +139,7 @@ export function useResolveAlert() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["alerts"] });
       queryClient.invalidateQueries({ queryKey: ["alert-counts"] });
+      queryClient.invalidateQueries({ queryKey: ["kpi-summary"] });
     },
   });
 }
@@ -212,6 +192,9 @@ export function useCreateManualAlert() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["alerts"] });
+      queryClient.invalidateQueries({ queryKey: ["alert-counts"] });
     },
   });
 }
+
+// Note: useAcknowledgeAlert has been removed as it's no longer needed

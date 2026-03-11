@@ -1,13 +1,19 @@
 import { Truck, User, Wrench, Fuel, MapPin, Server, Package, AlertCircle } from "lucide-react";
 import { useAlertsBySource } from "@/hooks/useAnalytics";
 import type { AlertFilters } from "@/types";
-import { cn } from "@/lib/utils";
 
 const SOURCE_ICONS: Record<string, React.ElementType> = {
   vehicle: Truck, driver: User, maintenance: Wrench, fuel: Fuel,
   geofence: MapPin, system: Server, load: Package, tyre: AlertCircle,
   trip: MapPin, manual: AlertCircle,
 };
+
+interface SourceData {
+  source_label: string;
+  source_type: string;
+  total: number;
+  active: number;
+}
 
 interface AlertsBySourceTableProps {
   filters: AlertFilters;
@@ -34,7 +40,7 @@ export default function AlertsBySourceTable({ filters }: AlertsBySourceTableProp
     );
   }
 
-  const maxTotal = Math.max(...data.map((d) => d.total), 1);
+  const maxTotal = Math.max(...data.map((d: SourceData) => d.total), 1);
 
   return (
     <div className="overflow-x-auto">
@@ -42,21 +48,13 @@ export default function AlertsBySourceTable({ filters }: AlertsBySourceTableProp
         <thead>
           <tr className="border-b border-border">
             <th className="text-left text-xs text-muted-foreground font-medium pb-2 pr-4">Source</th>
+            <th className="text-right text-xs text-muted-foreground font-medium pb-2 px-3 w-16">Active</th>
             <th className="text-right text-xs text-muted-foreground font-medium pb-2 px-3 w-16">Total</th>
-            <th className="text-right text-xs text-muted-foreground font-medium pb-2 px-3 w-16">
-              <span className="text-red-400">Crit</span>
-            </th>
-            <th className="text-right text-xs text-muted-foreground font-medium pb-2 px-3 w-16">
-              <span className="text-orange-400">High</span>
-            </th>
-            <th className="text-right text-xs text-muted-foreground font-medium pb-2 pl-3 w-16">
-              <span className="text-amber-400">Med</span>
-            </th>
             <th className="text-left text-xs text-muted-foreground font-medium pb-2 pl-4 w-32">Activity</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          {data.map((row) => {
+          {data.map((row: SourceData) => {
             const Icon = SOURCE_ICONS[row.source_type] ?? AlertCircle;
             const fillPct = Math.round((row.total / maxTotal) * 100);
             return (
@@ -70,18 +68,12 @@ export default function AlertsBySourceTable({ filters }: AlertsBySourceTableProp
                     <span className="text-[10px] text-muted-foreground">{row.source_type}</span>
                   </div>
                 </td>
-                <td className="text-right py-2.5 px-3 font-semibold text-foreground">{row.total}</td>
-                <td className="text-right py-2.5 px-3 text-red-400">{row.critical || "–"}</td>
-                <td className="text-right py-2.5 px-3 text-orange-400">{row.high || "–"}</td>
-                <td className="text-right py-2.5 pl-3 text-amber-400">{row.medium || "–"}</td>
+                <td className="text-right py-2.5 px-3 font-semibold text-foreground">{row.active || 0}</td>
+                <td className="text-right py-2.5 px-3 text-muted-foreground">{row.total}</td>
                 <td className="py-2.5 pl-4">
                   <div className="w-full bg-muted rounded-full h-1.5">
                     <div
-                      className={cn(
-                        "h-1.5 rounded-full",
-                        row.critical > 0 ? "bg-red-500" :
-                        row.high > 0     ? "bg-orange-500" : "bg-amber-500"
-                      )}
+                      className="bg-primary h-1.5 rounded-full"
                       style={{ width: `${fillPct}%` }}
                     />
                   </div>

@@ -5,9 +5,9 @@ import {
   createFlaggedCostAlert,
   createNoCostsAlert,
   createLongRunningTripAlert,
-  createPaymentStatusAlert,
   createFlaggedTripAlert,
 } from '@/lib/tripAlerts';
+import { resolveAlertsByTrip, resolveDuplicatePODAlerts } from '@/lib/resolveAlerts';
 import { TripAlertContext } from '@/types/tripAlerts';
 
 // Define proper types for JSON fields
@@ -54,7 +54,7 @@ interface Trip {
   client_name?: string;
   base_revenue?: number;
   revenue_currency?: string;
-  payment_status?: string;
+  payment_status?: string; // Keep in Trip interface but won't create alerts for it
   hasFlaggedCosts?: boolean;
   flaggedCostCount?: number;
   hasNoCosts?: boolean;
@@ -62,7 +62,6 @@ interface Trip {
   costs?: Cost[];
   additional_costs?: AdditionalCost[];
   departure_date?: string;
-  // Fields that can indicate a flagged trip - properly typed
   validation_notes?: string | null;
   delay_reasons?: DelayReason[] | null;
   completion_validation?: CompletionValidation | null;
@@ -73,20 +72,22 @@ interface Trip {
 interface UseTripAlertsOptions {
   enabled?: boolean;
   onAlertCreated?: (alertId: string, type: string) => void;
-  batchSize?: number; // Number of trips to process per batch
-  delayBetweenBatches?: number; // Delay in ms between batches
+  batchSize?: number;
+  delayBetweenBatches?: number;
 }
 
 export function useTripAlerts(trips: Trip[], options: UseTripAlertsOptions = {}) {
   const {
     enabled = true,
     onAlertCreated,
-    batchSize = 10, // Process 10 trips at a time
-    delayBetweenBatches = 500 // Wait 500ms between batches
+    batchSize = 10,
+    delayBetweenBatches = 500
   } = options;
 
   const processedAlerts = useRef<Set<string>>(new Set());
   const processingRef = useRef(false);
+  const previousTripStates = useRef<Map<string, Trip>>(new Map());
+  const previousPODCounts = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
     if (!enabled || !trips.length || processingRef.current) return;
@@ -94,16 +95,106 @@ export function useTripAlerts(trips: Trip[], options: UseTripAlertsOptions = {})
     const checkTripsForAlerts = async () => {
       processingRef.current = true;
 
-      // Track duplicate PODs
+      // Track current POD counts for duplicate detection
+      const currentPODCounts: Map<string, number> = new Map();
+
+      // Track which trips have issues resolved
+      const resolvedTrips = new Set<string>();
+
+      // Compare with previous state to detect resolved issues
+      for (const trip of trips) {
+        const previousTrip = previousTripStates.current.get(trip.id);
+
+        if (previousTrip) {
+          // Check if issues were resolved - removed payment_status check
+          const hadMissingRevenue = !previousTrip.base_revenue || previousTrip.base_revenue === 0;
+          const hasMissingRevenueNow = !trip.base_revenue || trip.base_revenue === 0;
+
+          const hadFlaggedCosts = previousTrip.hasFlaggedCosts;
+          const hasFlaggedCostsNow = trip.hasFlaggedCosts;
+
+          const hadNoCosts = previousTrip.hasNoCosts;
+          const hasNoCostsNow = trip.hasNoCosts;
+
+          const wasLongRunning = previousTrip.daysInProgress ? previousTrip.daysInProgress > 14 : false;
+          const isLongRunningNow = trip.daysInProgress ? trip.daysInProgress > 14 : false;
+
+          const wasFlagged = !!(previousTrip.validation_notes ||
+            (previousTrip.delay_reasons && previousTrip.delay_reasons.length > 0) ||
+            previousTrip.completion_validation ||
+            (previousTrip.edit_history && previousTrip.edit_history.length > 0) ||
+            previousTrip.hasIssues);
+
+          const isFlaggedNow = !!(trip.validation_notes ||
+            (trip.delay_reasons && trip.delay_reasons.length > 0) ||
+            trip.completion_validation ||
+            (trip.edit_history && trip.edit_history.length > 0) ||
+            trip.hasIssues);
+
+          // If any issue was resolved, mark for alert resolution
+          if ((hadMissingRevenue && !hasMissingRevenueNow) ||
+            (hadFlaggedCosts && !hasFlaggedCostsNow) ||
+            (hadNoCosts && !hasNoCostsNow) ||
+            (wasLongRunning && !isLongRunningNow) ||
+            (wasFlagged && !isFlaggedNow)) {
+            resolvedTrips.add(trip.id);
+          }
+        }
+
+        // Update previous state for next comparison
+        previousTripStates.current.set(trip.id, { ...trip });
+
+        // Track POD counts for duplicate detection
+        currentPODCounts.set(
+          trip.trip_number,
+          (currentPODCounts.get(trip.trip_number) || 0) + 1
+        );
+      }
+
+      // Check for resolved duplicate PODs
+      for (const [pod, previousCount] of previousPODCounts.current.entries()) {
+        const currentCount = currentPODCounts.get(pod) || 0;
+
+        // If duplicate POD alert existed but now there's only one or zero
+        if (previousCount > 1 && currentCount <= 1) {
+          try {
+            await resolveDuplicatePODAlerts(pod);
+          } catch (error) {
+            console.error('Error resolving duplicate POD alerts:', error);
+          }
+        }
+      }
+
+      // Update previous POD counts
+      previousPODCounts.current = new Map(currentPODCounts);
+
+      // Resolve alerts for trips that no longer have issues
+      if (resolvedTrips.size > 0) {
+        for (const tripId of resolvedTrips) {
+          try {
+            await resolveAlertsByTrip(tripId);
+            // Remove from processed alerts to allow re-creation if issue returns
+            const keysToDelete: string[] = [];
+            processedAlerts.current.forEach(key => {
+              if (key.includes(tripId)) {
+                keysToDelete.push(key);
+              }
+            });
+            keysToDelete.forEach(key => processedAlerts.current.delete(key));
+          } catch (error) {
+            console.error('Error resolving alerts for trip:', tripId, error);
+          }
+        }
+      }
+
+      // Track duplicate PODs for new alerts
       const podCounts: Record<string, { count: number; tripIds: string[]; contexts: TripAlertContext[] }> = {};
 
-      // Process trips in batches to prevent overwhelming the browser
+      // Process trips in batches for creating new alerts
       for (let i = 0; i < trips.length; i += batchSize) {
         const batch = trips.slice(i, i + batchSize);
 
-        // Process each trip in the current batch
         for (const trip of batch) {
-          // Build context for alerts
           const context: TripAlertContext = {
             tripId: trip.id,
             tripNumber: trip.trip_number,
@@ -123,14 +214,14 @@ export function useTripAlerts(trips: Trip[], options: UseTripAlertsOptions = {})
           podCounts[pod].tripIds.push(trip.id);
           podCounts[pod].contexts.push(context);
 
-          // Check for missing revenue
+          // Check for missing revenue (only if issue exists)
           if (!trip.base_revenue || trip.base_revenue === 0) {
             const alertKey = `missing-revenue-${trip.id}`;
             if (!processedAlerts.current.has(alertKey)) {
               processedAlerts.current.add(alertKey);
               try {
-                await createMissingRevenueAlert(trip.id, trip.trip_number, context);
-                onAlertCreated?.('', 'missing_revenue');
+                const alertId = await createMissingRevenueAlert(trip.id, trip.trip_number, context);
+                onAlertCreated?.(alertId, 'missing_revenue');
               } catch (error) {
                 console.error('Error creating missing revenue alert:', error);
               }
@@ -143,8 +234,8 @@ export function useTripAlerts(trips: Trip[], options: UseTripAlertsOptions = {})
             if (!processedAlerts.current.has(alertKey)) {
               processedAlerts.current.add(alertKey);
               try {
-                await createFlaggedCostAlert(trip.id, trip.trip_number, trip.flaggedCostCount, undefined, context);
-                onAlertCreated?.('', 'flagged_costs');
+                const alertId = await createFlaggedCostAlert(trip.id, trip.trip_number, trip.flaggedCostCount, undefined, context);
+                onAlertCreated?.(alertId, 'flagged_costs');
               } catch (error) {
                 console.error('Error creating flagged costs alert:', error);
               }
@@ -157,8 +248,8 @@ export function useTripAlerts(trips: Trip[], options: UseTripAlertsOptions = {})
             if (!processedAlerts.current.has(alertKey)) {
               processedAlerts.current.add(alertKey);
               try {
-                await createNoCostsAlert(trip.id, trip.trip_number, trip.daysInProgress, context);
-                onAlertCreated?.('', 'no_costs');
+                const alertId = await createNoCostsAlert(trip.id, trip.trip_number, trip.daysInProgress, context);
+                onAlertCreated?.(alertId, 'no_costs');
               } catch (error) {
                 console.error('Error creating no costs alert:', error);
               }
@@ -171,35 +262,15 @@ export function useTripAlerts(trips: Trip[], options: UseTripAlertsOptions = {})
             if (!processedAlerts.current.has(alertKey)) {
               processedAlerts.current.add(alertKey);
               try {
-                await createLongRunningTripAlert(trip.id, trip.trip_number, trip.daysInProgress, context);
-                onAlertCreated?.('', 'long_running');
+                const alertId = await createLongRunningTripAlert(trip.id, trip.trip_number, trip.daysInProgress, context);
+                onAlertCreated?.(alertId, 'long_running');
               } catch (error) {
                 console.error('Error creating long running alert:', error);
               }
             }
           }
 
-          // Check for payment status issues
-          if (trip.payment_status && trip.payment_status !== 'paid') {
-            const alertKey = `payment-${trip.id}`;
-            if (!processedAlerts.current.has(alertKey)) {
-              processedAlerts.current.add(alertKey);
-              try {
-                await createPaymentStatusAlert(
-                  trip.id,
-                  trip.trip_number,
-                  trip.payment_status,
-                  trip.base_revenue,
-                  context
-                );
-                onAlertCreated?.('', 'payment_status');
-              } catch (error) {
-                console.error('Error creating payment status alert:', error);
-              }
-            }
-          }
-
-          // Check for flagged trips (validation notes, delay reasons, etc.)
+          // Check for flagged trips
           if (trip.validation_notes ||
             (trip.delay_reasons && trip.delay_reasons.length > 0) ||
             trip.completion_validation ||
@@ -210,7 +281,6 @@ export function useTripAlerts(trips: Trip[], options: UseTripAlertsOptions = {})
             if (!processedAlerts.current.has(alertKey)) {
               processedAlerts.current.add(alertKey);
 
-              // Determine reason from available fields
               let reason = 'Trip has been flagged for review';
               if (trip.validation_notes) {
                 reason = `Validation notes: ${trip.validation_notes}`;
@@ -224,13 +294,13 @@ export function useTripAlerts(trips: Trip[], options: UseTripAlertsOptions = {})
               }
 
               try {
-                await createFlaggedTripAlert(
+                const alertId = await createFlaggedTripAlert(
                   trip.id,
                   trip.trip_number,
                   reason,
                   context
                 );
-                onAlertCreated?.('', 'flagged_trip');
+                onAlertCreated?.(alertId, 'flagged_trip');
               } catch (error) {
                 console.error('Error creating flagged trip alert:', error);
               }
@@ -238,21 +308,20 @@ export function useTripAlerts(trips: Trip[], options: UseTripAlertsOptions = {})
           }
         }
 
-        // Wait between batches to prevent overwhelming the browser
         if (i + batchSize < trips.length) {
           await new Promise(resolve => setTimeout(resolve, delayBetweenBatches));
         }
       }
 
-      // Check for duplicate PODs (process separately)
+      // Check for duplicate PODs (create new alerts if needed)
       for (const [pod, { count, tripIds, contexts }] of Object.entries(podCounts)) {
         if (count > 1) {
           const alertKey = `duplicate-pod-${pod}`;
           if (!processedAlerts.current.has(alertKey)) {
             processedAlerts.current.add(alertKey);
             try {
-              await createDuplicatePODAlert(pod, count, tripIds, contexts[0]);
-              onAlertCreated?.('', 'duplicate_pod');
+              const alertId = await createDuplicatePODAlert(pod, count, tripIds, contexts[0]);
+              onAlertCreated?.(alertId, 'duplicate_pod');
             } catch (error) {
               console.error('Error creating duplicate POD alert:', error);
             }
@@ -269,6 +338,8 @@ export function useTripAlerts(trips: Trip[], options: UseTripAlertsOptions = {})
   // Return function to manually trigger alert checks
   const refreshAlerts = () => {
     processedAlerts.current.clear();
+    previousTripStates.current.clear();
+    previousPODCounts.current.clear();
   };
 
   return { refreshAlerts };

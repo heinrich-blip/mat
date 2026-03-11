@@ -1,71 +1,168 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, Calendar, Clock, FileSpreadsheet, FileText, Gauge } from "lucide-react";
+import { AlertTriangle, Calendar, Clock, FileSpreadsheet, FileText, Gauge, Timer } from "lucide-react";
 import { format, differenceInDays } from "date-fns";
 import { toast } from "sonner";
 import { CompleteMaintenanceDialog } from "./CompleteMaintenanceDialog";
 import { MaintenanceSchedule } from "@/types/maintenance";
 import { exportOverdueToPDF, exportOverdueToExcel } from "@/lib/maintenanceExport";
 import { getVehicleLatestKm } from "@/lib/maintenanceKmTracking";
+import { isReeferFleet } from "@/utils/fleetCategories";
 
 export function OverdueAlerts() {
   const [overdueSchedules, setOverdueSchedules] = useState<MaintenanceSchedule[]>([]);
   const [vehicleKmMap, setVehicleKmMap] = useState<Record<string, number>>({});
+  const [vehicleFleetMap, setVehicleFleetMap] = useState<Record<string, string>>({});
+  const [reeferHoursMap, setReeferHoursMap] = useState<Record<string, { hours: number; date: string }>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [selectedSchedule, setSelectedSchedule] = useState<MaintenanceSchedule | null>(null);
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
 
-  const fetchOverdue = async () => {
+  const fetchReeferHours = async (vehicleIds: string[], fleetMap: Record<string, string>) => {
+    const fleetNumbers = vehicleIds
+      .map(id => fleetMap[id])
+      .filter(Boolean)
+      .filter(isReeferFleet);
+
+    if (fleetNumbers.length === 0) return {};
+
+    const hoursMap: Record<string, { hours: number; date: string }> = {};
+
+    for (const fleetNumber of fleetNumbers) {
+      const { data } = await supabase
+        .from("reefer_diesel_records")
+        .select("operating_hours, date")
+        .eq("reefer_unit", fleetNumber)
+        .not("operating_hours", "is", null)
+        .order("date", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (data?.operating_hours) {
+        hoursMap[fleetNumber] = {
+          hours: data.operating_hours,
+          date: data.date,
+        };
+      }
+    }
+
+    return hoursMap;
+  };
+
+  const fetchOverdue = useCallback(async () => {
     setIsLoading(true);
     try {
-      // 1. Fetch date-based overdue schedules
-      const { data: dateOverdue, error: dateError } = await supabase
+      // 1. Fetch ALL active maintenance schedules
+      const { data: allSchedules, error: schedulesError } = await supabase
         .from("maintenance_schedules")
         .select("*")
-        .eq("is_active", true)
-        .eq("odometer_based", false)
-        .lt("next_due_date", new Date().toISOString().split("T")[0])
-        .order("priority", { ascending: false })
-        .order("next_due_date", { ascending: true });
+        .eq("is_active", true);
 
-      if (dateError) throw dateError;
+      if (schedulesError) throw schedulesError;
 
-      // 2. Fetch ALL active KM-based schedules (they may have sentinel date 2099-12-31)
-      const { data: kmSchedules, error: kmError } = await supabase
-        .from("maintenance_schedules")
-        .select("*")
-        .eq("is_active", true)
-        .eq("odometer_based", true);
+      if (!allSchedules || allSchedules.length === 0) {
+        setOverdueSchedules([]);
+        return;
+      }
 
-      if (kmError) throw kmError;
+      // 2. Get all vehicle IDs that have schedules
+      const vehicleIds = [...new Set(
+        (allSchedules || [])
+          .filter(s => s.vehicle_id)
+          .map(s => s.vehicle_id as string)
+      )];
 
-      // 3. Get latest trip ending_km for each vehicle that has a KM schedule
-      const kmVehicleIds = [...new Set((kmSchedules || []).filter(s => s.vehicle_id).map(s => s.vehicle_id as string))];
-      const latestKmMap = await getVehicleLatestKm(kmVehicleIds);
+      // 3. Get vehicle fleet numbers
+      const { data: vehicles, error: vehiclesError } = await supabase
+        .from("vehicles")
+        .select("id, fleet_number")
+        .in("id", vehicleIds);
+
+      if (vehiclesError) throw vehiclesError;
+
+      const fleetMap: Record<string, string> = {};
+      vehicles?.forEach(v => {
+        if (v.fleet_number) {
+          fleetMap[v.id] = v.fleet_number;
+        }
+      });
+      setVehicleFleetMap(fleetMap);
+
+      // 4. Get latest KM for non-reefer vehicles
+      const nonReeferIds = vehicleIds.filter(id => {
+        const fleetNumber = fleetMap[id] || "";
+        return !isReeferFleet(fleetNumber);
+      });
+
+      const latestKmMap = await getVehicleLatestKm(nonReeferIds);
       setVehicleKmMap(latestKmMap);
 
-      // 4. Filter KM schedules that are actually overdue based on trip ending_km
-      const kmOverdue = (kmSchedules || []).filter(s => {
-        if (!s.vehicle_id || !s.odometer_interval_km) return false;
-        const currentKm = latestKmMap[s.vehicle_id as string] || 0;
-        const lastReading = (s.last_odometer_reading as number) || 0;
-        const nextServiceKm = lastReading + (s.odometer_interval_km as number);
-        return currentKm >= nextServiceKm;
+      // 5. Get latest hours for reefer vehicles
+      const reeferHours = await fetchReeferHours(vehicleIds, fleetMap);
+      setReeferHoursMap(reeferHours);
+
+      // 6. Check each schedule for overdue status
+      const overdue: MaintenanceSchedule[] = [];
+
+      for (const schedule of allSchedules as MaintenanceSchedule[]) {
+        const fleetNumber = schedule.vehicle_id ? fleetMap[schedule.vehicle_id] || "" : "";
+        const isReefer = isReeferFleet(fleetNumber);
+
+        // Date-based schedules
+        if (!schedule.odometer_based && schedule.next_due_date) {
+          const dueDate = new Date(schedule.next_due_date);
+          const today = new Date();
+          if (dueDate < today) {
+            overdue.push(schedule);
+          }
+          continue;
+        }
+
+        // KM-based schedules (trucks)
+        if (schedule.odometer_based && !isReefer && schedule.vehicle_id && schedule.odometer_interval_km) {
+          const currentKm = latestKmMap[schedule.vehicle_id] || 0;
+          const lastReading = (schedule.last_odometer_reading as number) || 0;
+          const nextServiceKm = lastReading + (schedule.odometer_interval_km as number);
+
+          if (currentKm >= nextServiceKm) {
+            overdue.push(schedule);
+          }
+          continue;
+        }
+
+        // Hours-based schedules (reefers)
+        if (schedule.odometer_based && isReefer && fleetNumber && schedule.odometer_interval_km) {
+          const reeferData = reeferHours[fleetNumber];
+          if (!reeferData) continue;
+
+          const currentHours = reeferData.hours;
+          const lastReading = (schedule.last_odometer_reading as number) || 0;
+          const nextServiceHours = lastReading + (schedule.odometer_interval_km as number);
+
+          if (currentHours >= nextServiceHours) {
+            overdue.push(schedule);
+          }
+        }
+      }
+
+      // 7. Sort by priority and due date
+      const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+      overdue.sort((a, b) => {
+        const priorityDiff = (priorityOrder[a.priority as keyof typeof priorityOrder] || 999) -
+          (priorityOrder[b.priority as keyof typeof priorityOrder] || 999);
+        if (priorityDiff !== 0) return priorityDiff;
+
+        // For date-based, sort by due date
+        if (a.next_due_date && b.next_due_date) {
+          return new Date(a.next_due_date).getTime() - new Date(b.next_due_date).getTime();
+        }
+        return 0;
       });
 
-      // 5. Merge both lists (date overdue + KM overdue), deduplicate by ID
-      const allOverdue = [...(dateOverdue || []), ...kmOverdue];
-      const seen = new Set<string>();
-      const deduped = allOverdue.filter(s => {
-        if (seen.has(s.id)) return false;
-        seen.add(s.id);
-        return true;
-      });
-
-      setOverdueSchedules(deduped as MaintenanceSchedule[]);
+      setOverdueSchedules(overdue);
     } catch (error) {
       console.error("Error fetching overdue schedules:", error);
       const errorMessage = error instanceof Error ? error.message : "Failed to load overdue schedules";
@@ -73,7 +170,7 @@ export function OverdueAlerts() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchOverdue();
@@ -81,7 +178,7 @@ export function OverdueAlerts() {
     // Auto-refresh every minute
     const interval = setInterval(fetchOverdue, 60000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchOverdue]);
 
   const getPriorityColor = (priority: string) => {
     const colors: Record<string, string> = {
@@ -105,6 +202,52 @@ export function OverdueAlerts() {
   const handleCompleted = () => {
     fetchOverdue();
     toast.success("Maintenance completed");
+  };
+
+  const getOverdueDetails = (schedule: MaintenanceSchedule) => {
+    const fleetNumber = schedule.vehicle_id ? vehicleFleetMap[schedule.vehicle_id] || "" : "";
+    const isReefer = isReeferFleet(fleetNumber);
+
+    if (isReefer && schedule.odometer_based && schedule.odometer_interval_km) {
+      const reeferData = reeferHoursMap[fleetNumber];
+      if (reeferData) {
+        const lastReading = schedule.last_odometer_reading || 0;
+        const nextServiceHours = lastReading + schedule.odometer_interval_km;
+        const currentHours = reeferData.hours;
+        const hoursOverdue = currentHours - nextServiceHours;
+
+        return {
+          type: "hours" as const,
+          current: currentHours,
+          last: lastReading,
+          next: nextServiceHours,
+          overdue: hoursOverdue,
+          date: reeferData.date,
+        };
+      }
+    } else if (!isReefer && schedule.odometer_based && schedule.vehicle_id && schedule.odometer_interval_km) {
+      const currentKm = vehicleKmMap[schedule.vehicle_id] || 0;
+      const lastReading = schedule.last_odometer_reading || 0;
+      const nextServiceKm = lastReading + schedule.odometer_interval_km;
+      const kmOverdue = currentKm - nextServiceKm;
+
+      return {
+        type: "km" as const,
+        current: currentKm,
+        last: lastReading,
+        next: nextServiceKm,
+        overdue: kmOverdue,
+      };
+    } else if (schedule.next_due_date) {
+      const daysOverdue = getDaysOverdue(schedule.next_due_date);
+      return {
+        type: "date" as const,
+        days: daysOverdue,
+        dueDate: schedule.next_due_date,
+      };
+    }
+
+    return null;
   };
 
   if (isLoading) {
@@ -173,14 +316,10 @@ export function OverdueAlerts() {
           <CardContent>
             <div className="space-y-3">
               {overdueSchedules.map((schedule) => {
-                const isKmBased = !!schedule.odometer_based;
-                const daysOverdue = isKmBased ? 0 : getDaysOverdue(schedule.next_due_date!);
-                // For KM-based: compute KM overdue info
-                const currentVehicleKm = (schedule.vehicle_id && vehicleKmMap[schedule.vehicle_id]) || 0;
-                const lastReading = schedule.last_odometer_reading || 0;
-                const kmOverdueAmount = isKmBased && schedule.odometer_interval_km
-                  ? currentVehicleKm - (lastReading + schedule.odometer_interval_km)
-                  : 0;
+                const fleetNumber = schedule.vehicle_id ? vehicleFleetMap[schedule.vehicle_id] || "" : "";
+                const isReefer = isReeferFleet(fleetNumber);
+                const overdueDetails = getOverdueDetails(schedule);
+
                 return (
                   <Card key={schedule.id} className="border-l-4 border-l-red-500">
                     <CardContent className="pt-4">
@@ -191,37 +330,77 @@ export function OverdueAlerts() {
                               {schedule.priority}
                             </Badge>
                             <Badge variant="outline">{schedule.category}</Badge>
-                            {isKmBased && (
-                              <Badge variant="secondary" className="text-xs">KM-based</Badge>
+                            {isReefer && (
+                              <Badge variant="secondary" className="bg-blue-500/10 text-blue-600">
+                                <Timer className="w-3 h-3 mr-1" />
+                                Reefer
+                              </Badge>
+                            )}
+                            {schedule.odometer_based && (
+                              <Badge variant="secondary" className="text-xs">
+                                {isReefer ? "Hours-based" : "KM-based"}
+                              </Badge>
                             )}
                           </div>
 
-                          <h3 className="font-semibold text-lg">{schedule.title}</h3>
+                          <h3 className="font-semibold text-lg">
+                            {schedule.title}
+                            {fleetNumber && (
+                              <span className="text-sm font-normal text-muted-foreground ml-2">
+                                ({fleetNumber})
+                              </span>
+                            )}
+                          </h3>
 
                           {schedule.description && (
                             <p className="text-sm text-muted-foreground">{schedule.description}</p>
                           )}
 
                           <div className="flex items-center space-x-4 text-sm text-muted-foreground flex-wrap gap-y-1">
-                            {isKmBased ? (
+                            {overdueDetails?.type === "hours" && (
+                              <>
+                                <div className="flex items-center space-x-1 text-red-600 font-semibold">
+                                  <Timer className="w-4 h-4" />
+                                  <span>{Math.abs(overdueDetails.overdue).toLocaleString()} hrs overdue</span>
+                                </div>
+                                <div className="flex items-center space-x-1">
+                                  <span>
+                                    Current: {overdueDetails.current.toLocaleString()} hrs —
+                                    Service due at {overdueDetails.next.toLocaleString()} hrs
+                                    {overdueDetails.date && (
+                                      <span className="text-xs ml-1">
+                                        (as of {format(new Date(overdueDetails.date), "MMM dd")})
+                                      </span>
+                                    )}
+                                  </span>
+                                </div>
+                              </>
+                            )}
+
+                            {overdueDetails?.type === "km" && (
                               <>
                                 <div className="flex items-center space-x-1 text-red-600 font-semibold">
                                   <Gauge className="w-4 h-4" />
-                                  <span>{Math.abs(kmOverdueAmount).toLocaleString()} km overdue</span>
+                                  <span>{Math.abs(overdueDetails.overdue).toLocaleString()} km overdue</span>
                                 </div>
                                 <div className="flex items-center space-x-1">
-                                  <span>Vehicle at {currentVehicleKm.toLocaleString()} km — service was due at {(lastReading + (schedule.odometer_interval_km || 0)).toLocaleString()} km</span>
+                                  <span>
+                                    Current: {overdueDetails.current.toLocaleString()} km —
+                                    Service due at {overdueDetails.next.toLocaleString()} km
+                                  </span>
                                 </div>
                               </>
-                            ) : (
+                            )}
+
+                            {overdueDetails?.type === "date" && (
                               <>
                                 <div className="flex items-center space-x-1">
                                   <Calendar className="w-4 h-4" />
-                                  <span>Due: {format(new Date(schedule.next_due_date!), "MMM dd, yyyy")}</span>
+                                  <span>Due: {format(new Date(overdueDetails.dueDate), "MMM dd, yyyy")}</span>
                                 </div>
                                 <div className="flex items-center space-x-1 text-red-600 font-semibold">
                                   <Clock className="w-4 h-4" />
-                                  <span>{daysOverdue} day{daysOverdue !== 1 ? "s" : ""} overdue</span>
+                                  <span>{overdueDetails.days} day{overdueDetails.days !== 1 ? "s" : ""} overdue</span>
                                 </div>
                               </>
                             )}

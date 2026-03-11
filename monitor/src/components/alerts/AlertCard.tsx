@@ -1,18 +1,24 @@
-import { useState, useEffect } from "react";
-import { formatDistanceToNow, format } from "date-fns";
-import {
-  Truck, User, Wrench, Fuel, MapPin, Server, Package, AlertCircle,
-  Check, CheckCheck, MessageSquare, ChevronDown, ChevronUp, Clock,
-  AlertTriangle, DollarSign, ExternalLink,
-} from "lucide-react";
+import { useResolveAlert } from "@/hooks/useAlerts";
+import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import type { Alert } from "@/types";
-import SeverityBadge from "./SeverityBadge";
-import { useAcknowledgeAlert, useResolveAlert } from "@/hooks/useAlerts";
-import { useAuth } from "@/contexts/AuthContext";
-import { toast } from "sonner";
+import { format, formatDistanceToNow } from "date-fns";
+import {
+  AlertCircle,
+  AlertTriangle,
+  CheckCheck,
+  ChevronDown, ChevronUp, Clock,
+  DollarSign, ExternalLink,
+  Fuel, MapPin,
+  MessageSquare,
+  Package,
+  Server,
+  Truck, User, Wrench
+} from "lucide-react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import SeverityBadge from "./SeverityBadge";
 
 const SOURCE_ICONS: Record<string, React.ElementType> = {
   vehicle: Truck,
@@ -32,13 +38,30 @@ const SOURCE_ICONS: Record<string, React.ElementType> = {
   fuel_anomaly: Fuel,
 };
 
-/* Professional severity border colors - subtle and business-appropriate */
-const BORDER_COLORS: Record<string, string> = {
-  critical: "border-l-destructive",
-  high: "border-l-severity-high",
-  medium: "border-l-severity-medium",
-  low: "border-l-severity-low",
-  info: "border-l-severity-info",
+/* Enhanced severity border colors with glow effects */
+const SEVERITY_STYLES: Record<string, { border: string; glow?: string; bgIcon: string }> = {
+  critical: {
+    border: "border-l-destructive",
+    glow: "severity-critical-glow",
+    bgIcon: "bg-destructive/10",
+  },
+  high: {
+    border: "border-l-severity-high",
+    glow: "severity-high-glow",
+    bgIcon: "bg-severity-high/10",
+  },
+  medium: {
+    border: "border-l-severity-medium",
+    bgIcon: "bg-severity-medium/10",
+  },
+  low: {
+    border: "border-l-severity-low",
+    bgIcon: "bg-severity-low/10",
+  },
+  info: {
+    border: "border-l-severity-info",
+    bgIcon: "bg-muted",
+  },
 };
 
 interface AlertCardProps {
@@ -62,8 +85,6 @@ interface TripMetadata {
 
 export default function AlertCard({ alert }: AlertCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const { user } = useAuth();
-  const acknowledge = useAcknowledgeAlert();
   const resolve = useResolveAlert();
   const [vehicleDetails, setVehicleDetails] = useState<{ fleet_number?: string } | null>(null);
 
@@ -92,21 +113,9 @@ export default function AlertCard({ alert }: AlertCardProps) {
   const isTripAlert = ['duplicate_pod', 'load_exception', 'trip_delay', 'fuel_anomaly'].includes(alert.category);
   const SourceIcon = SOURCE_ICONS[isTripAlert ? alert.category : alert.source_type] ?? AlertCircle;
   const isActive = alert.status === "active";
-  const isAcknowledged = alert.status === "acknowledged";
 
   // Use real fleet number if available, otherwise fall back to metadata
   const displayFleetNumber = vehicleDetails?.fleet_number || metadata?.fleet_number;
-
-  const handleAcknowledge = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    try {
-      await acknowledge.mutateAsync({ alertId: alert.id, userId: user.id });
-      toast.success("Alert acknowledged");
-    } catch {
-      toast.error("Failed to acknowledge alert");
-    }
-  };
 
   const handleResolve = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -132,31 +141,38 @@ export default function AlertCard({ alert }: AlertCardProps) {
   return (
     <div
       className={cn(
-        "bg-card border border-border border-l-[3px] rounded-lg overflow-hidden transition-shadow duration-200 hover:shadow-card",
-        BORDER_COLORS[alert.severity] ?? "border-l-severity-info",
+        "bg-card border border-border border-l-[3px] rounded-lg overflow-hidden transition-all duration-200 hover:shadow-card hover-lift",
+        SEVERITY_STYLES[alert.severity]?.border ?? "border-l-severity-info",
+        SEVERITY_STYLES[alert.severity]?.glow,
         alert.severity === "critical" && isActive && "critical-pulse"
       )}
     >
       <div className="p-4">
         {/* Top row */}
         <div className="flex items-start gap-3">
-          {/* Source icon */}
-          <div className="w-8 h-8 rounded-md bg-secondary border border-border flex items-center justify-center flex-shrink-0 mt-0.5">
-            <SourceIcon className="h-4 w-4 text-muted-foreground" />
+          {/* Source icon - colored by severity */}
+          <div className={cn(
+            "w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 transition-transform duration-200",
+            SEVERITY_STYLES[alert.severity]?.bgIcon ?? "bg-muted",
+            "border border-border"
+          )}>
+            <SourceIcon className={cn(
+              "h-5 w-5",
+              alert.severity === "critical" && "text-destructive",
+              alert.severity === "high" && "text-severity-high",
+              alert.severity === "medium" && "text-severity-medium",
+              alert.severity === "low" && "text-severity-low",
+              alert.severity === "info" && "text-muted-foreground"
+            )} />
           </div>
 
           {/* Content */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1.5">
               <SeverityBadge severity={alert.severity} dot />
-              {alert.status !== "active" && (
-                <span className={cn(
-                  "text-[10px] font-semibold px-2 py-0.5 rounded border uppercase tracking-wide",
-                  alert.status === "acknowledged" ? "bg-blue-500/10 text-blue-600 border-blue-500/20 dark:text-blue-400" :
-                    alert.status === "resolved" ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20 dark:text-emerald-400" :
-                      "bg-muted text-muted-foreground border-border"
-                )}>
-                  {alert.status}
+              {alert.status !== "active" && alert.status === "resolved" && (
+                <span className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 dark:text-emerald-400 text-[10px] font-semibold px-2 py-0.5 rounded border uppercase tracking-wide">
+                  RESOLVED
                 </span>
               )}
               <span className="text-xs text-muted-foreground ml-auto flex-shrink-0 tabular-nums" title={format(new Date(alert.triggered_at), "PPpp")}>
@@ -307,16 +323,6 @@ export default function AlertCard({ alert }: AlertCardProps) {
         {/* Action row */}
         <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border">
           {isActive && (
-            <button
-              onClick={handleAcknowledge}
-              disabled={acknowledge.isPending}
-              className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-secondary text-foreground hover:bg-accent transition-colors disabled:opacity-50 font-medium border border-border"
-            >
-              <Check className="h-3.5 w-3.5" />
-              Acknowledge
-            </button>
-          )}
-          {(isActive || isAcknowledged) && (
             <button
               onClick={handleResolve}
               disabled={resolve.isPending}

@@ -23,7 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useOperations } from '@/contexts/OperationsContext';
 import { useReeferConsumptionSummary, useReeferDieselRecords, type ReeferDieselRecordRow } from '@/hooks/useReeferDiesel';
-import { generateDieselDebriefPDF, generateFleetDebriefSummaryPDF, generateSelectedTransactionsPDF } from '@/lib/dieselDebriefExport';
+import { generateFleetDebriefSummaryPDF, generateSelectedTransactionsPDF } from '@/lib/dieselDebriefExport';
 import {
   generateAllFleetsDieselExcel,
   generateAllFleetsDieselPDF,
@@ -380,8 +380,6 @@ const DieselManagement = () => {
 
   // Debrief fleet filter for PDF export
   const [debriefFleetFilter, setDebriefFleetFilter] = useState<string>('');
-  // Completed debrief fleet filter
-  const [completedDebriefFleetFilter, setCompletedDebriefFleetFilter] = useState<string>('');
   // Pending debrief accordion — tracks which fleet groups are expanded
   const [expandedPendingFleets, setExpandedPendingFleets] = useState<Set<string>>(new Set());
   // WhatsApp-shared record IDs, persisted in localStorage
@@ -2503,6 +2501,15 @@ const DieselManagement = () => {
                             Export Pending
                           </Button>
                           <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => exportDebriefTransactions('all')}
+                            className="gap-2"
+                          >
+                            <Download className="h-4 w-4" />
+                            Export All (with Debrief Status)
+                          </Button>
+                          <Button
                             variant="default"
                             size="sm"
                             onClick={() => {
@@ -2523,6 +2530,18 @@ const DieselManagement = () => {
                             Batch Debrief All
                           </Button>
                         </>
+                      )}
+                      {/* Show Export All button when there are no pending but there are completed */}
+                      {recordsRequiringDebrief.length === 0 && truckRecords.filter(r => r.debrief_signed).length > 0 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => exportDebriefTransactions('all')}
+                          className="gap-2"
+                        >
+                          <Download className="h-4 w-4" />
+                          Export All (with Debrief Status)
+                        </Button>
                       )}
                     </div>
                   </div>
@@ -2675,102 +2694,6 @@ const DieselManagement = () => {
                       </p>
                     </div>
                   )}
-                </CardContent>
-              </Card>
-
-              {/* Completed Debriefs */}
-              <Card>
-                <CardHeader className="pb-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <CardTitle>Completed Debriefs</CardTitle>
-                      <CardDescription>
-                        Records that have been debriefed and signed off
-                      </CardDescription>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <select
-                        title="Filter by fleet"
-                        value={completedDebriefFleetFilter}
-                        onChange={e => setCompletedDebriefFleetFilter(e.target.value)}
-                        className="px-2 py-1 border rounded-md bg-background text-xs min-w-[130px]"
-                      >
-                        <option value="">All Fleets</option>
-                        {uniqueFleetNumbers.map(f => (
-                          <option key={f} value={f}>{f}</option>
-                        ))}
-                      </select>
-                      {truckRecords.filter(r => r.debrief_signed).length > 0 && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => exportDebriefTransactions('completed')}
-                          className="gap-2"
-                        >
-                          <FileSpreadsheet className="h-4 w-4" />
-                          Export Completed
-                        </Button>
-                      )}
-                      {(recordsRequiringDebrief.length > 0 || truckRecords.filter(r => r.debrief_signed).length > 0) && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => exportDebriefTransactions('all')}
-                          className="gap-2"
-                        >
-                          <Download className="h-4 w-4" />
-                          Export All
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {(() => {
-                    const allCompleted = truckRecords.filter(r => r.debrief_signed);
-                    const filtered = completedDebriefFleetFilter
-                      ? allCompleted.filter(r => r.fleet_number === completedDebriefFleetFilter)
-                      : allCompleted;
-                    return filtered.length > 0 ? (
-                      <div className="space-y-2">
-                        {filtered.map((record) => (
-                          <div key={record.id} className="border rounded-lg p-2.5 flex items-center gap-3">
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-0.5 flex-1 text-xs">
-                              <div>
-                                <span className="text-muted-foreground">Fleet </span>
-                                <span className="font-medium">{record.fleet_number}</span>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground">Date </span>
-                                <span className="font-medium">{formatDate(record.date)}</span>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground">Efficiency </span>
-                                <span className="font-medium">{record.km_per_litre ? `${formatNumber(record.km_per_litre, 2)} km/L` : 'N/A'}</span>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground">Signed by </span>
-                                <span className="font-medium">{record.debrief_signed_by}</span>
-                              </div>
-                            </div>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="shrink-0 text-xs h-7 px-2"
-                              onClick={() => generateDieselDebriefPDF(record, dieselNorms.find(n => n.fleet_number === record.fleet_number))}
-                            >
-                              <FileText className="h-3.5 w-3.5 mr-1" />
-                              PDF
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-muted-foreground text-center py-8">
-                        {completedDebriefFleetFilter ? `No completed debriefs for ${completedDebriefFleetFilter}` : 'No completed debriefs yet'}
-                      </p>
-                    );
-                  })()}
                 </CardContent>
               </Card>
             </div>
@@ -4464,7 +4387,7 @@ const DieselManagement = () => {
         }
         fleetNumber={selectedFleetForBatch || 'All Fleets'}
         onBatchDebrief={handleBatchDebrief}
-        onBatchWhatsappShare={handleBatchWhatsappShare}
+        onWhatsappShared={handleBatchWhatsappShare}
       />
 
       <DieselNormsModal
