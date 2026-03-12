@@ -7,13 +7,13 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { GeofenceSelect } from '@/components/ui/geofence-select';
 import { Input } from '@/components/ui/input';
 import { RouteSelect } from '@/components/ui/route-select';
-import type { RouteExpenseItem } from '@/hooks/useRoutePredefinedExpenses';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { LOAD_TYPES } from '@/constants/loadTypes';
 import { TOLL_COST_CATEGORY, TOLL_COST_SUBCATEGORY } from '@/constants/routeTollCosts';
 import { useOperations } from '@/contexts/OperationsContext';
 import { useToast } from '@/hooks/use-toast';
+import type { RouteExpenseItem } from '@/hooks/useRoutePredefinedExpenses';
 import { useWialonVehicles } from '@/hooks/useWialonVehicles';
 import type { CostEntry, Trip } from '@/types/operations';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -43,6 +43,7 @@ const tripSchema = z.object({
   distance_km: z.string().optional(),
   empty_km: z.string().optional(),
   empty_km_reason: z.string().optional(),
+  zero_revenue_comment: z.string().optional(),
 }).refine(
   (data) => {
     // If empty_km is provided and > 0, empty_km_reason is required
@@ -101,6 +102,7 @@ const AddTripDialog = ({ isOpen, onClose }: AddTripDialogProps) => {
       distance_km: '',
       empty_km: '',
       empty_km_reason: '',
+      zero_revenue_comment: '',
     },
   });
 
@@ -108,6 +110,7 @@ const AddTripDialog = ({ isOpen, onClose }: AddTripDialogProps) => {
   const startingKm = form.watch('starting_km');
   const endingKm = form.watch('ending_km');
   const emptyKm = form.watch('empty_km');
+  const baseRevenue = form.watch('base_revenue');
   const revenueType = form.watch('revenue_type');
   const ratePerKm = form.watch('rate_per_km');
   const distanceKm = form.watch('distance_km');
@@ -170,6 +173,7 @@ const AddTripDialog = ({ isOpen, onClose }: AddTripDialogProps) => {
         distance_km: data.distance_km ? parseFloat(data.distance_km) : null,
         empty_km: data.empty_km ? parseFloat(data.empty_km) : null,
         empty_km_reason: data.empty_km_reason || null,
+        zero_revenue_comment: data.zero_revenue_comment || null,
         status: 'active',
       } as Omit<Trip, 'id' | 'created_at' | 'updated_at'>;
 
@@ -180,7 +184,7 @@ const AddTripDialog = ({ isOpen, onClose }: AddTripDialogProps) => {
       if (selectedRouteExpenses.length > 0 && tripId) {
         // Filter for required expenses only - these are auto-added
         const requiredExpenses = selectedRouteExpenses.filter(e => e.is_required);
-        
+
         for (const expense of requiredExpenses) {
           const expenseEntry: Omit<CostEntry, 'id' | 'created_at' | 'updated_at'> = {
             trip_id: tripId,
@@ -193,7 +197,7 @@ const AddTripDialog = ({ isOpen, onClose }: AddTripDialogProps) => {
             is_flagged: false,
             is_system_generated: true,
           };
-          
+
           try {
             await addCostEntry(expenseEntry);
             routeExpensesAdded++;
@@ -202,7 +206,7 @@ const AddTripDialog = ({ isOpen, onClose }: AddTripDialogProps) => {
           }
         }
       }
-      
+
       // Fallback: If no route expenses but toll cost exists (old system), add toll cost
       if (routeExpensesAdded === 0 && selectedTollCost && selectedTollCost.amount > 0 && tripId) {
         const tollCostEntry: Omit<CostEntry, 'id' | 'created_at' | 'updated_at'> = {
@@ -665,6 +669,33 @@ const AddTripDialog = ({ isOpen, onClose }: AddTripDialogProps) => {
                     )}
                   />
                 </div>
+              )}
+
+              {/* Zero Revenue Comment - shown when base revenue is 0 or empty */}
+              {(!baseRevenue || baseRevenue === '0' || baseRevenue === '0.00') && (
+                <FormField
+                  control={form.control}
+                  name="zero_revenue_comment"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-amber-700">
+                        Zero Revenue Comment
+                      </FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder="Explain why this trip has no revenue (e.g., repositioning, internal transfer, warranty load)"
+                          className="resize-none border-amber-200 focus:ring-amber-500"
+                          rows={2}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormDescription className="text-xs text-amber-600">
+                        Providing a comment will modify the missing revenue alert for this trip
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               )}
             </div>
 

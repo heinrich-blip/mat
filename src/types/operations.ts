@@ -19,6 +19,7 @@ export interface Trip {
   distance_km?: number;
   empty_km?: number;
   empty_km_reason?: string;
+  zero_revenue_comment?: string;
   departure_date?: string;
   arrival_date?: string;
   base_revenue?: number;

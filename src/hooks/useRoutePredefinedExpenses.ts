@@ -1,4 +1,5 @@
 import { COST_CATEGORIES } from '@/constants/costCategories';
+import { DEFAULT_ROUTE_EXPENSES } from '@/constants/routePredefinedExpenses';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -84,6 +85,26 @@ export const formatTotalCost = (expenses: RouteExpenseItem[]): string => {
   return parts.join(' + ') || '$0';
 };
 
+// Transform DEFAULT_ROUTE_EXPENSES to RouteExpenseConfig format for fallback
+const transformDefaultExpenses = (): RouteExpenseConfig[] => {
+  return DEFAULT_ROUTE_EXPENSES.map((route, index) => ({
+    id: `default-${index}`,
+    route: route.route,
+    description: route.description,
+    is_active: route.is_active,
+    expenses: route.expenses.map((expense, expIndex) => ({
+      id: `default-${index}-${expIndex}`,
+      route_config_id: `default-${index}`,
+      category: expense.category,
+      sub_category: expense.sub_category,
+      amount: expense.amount,
+      currency: expense.currency,
+      description: expense.description,
+      is_required: expense.is_required,
+    })),
+  }));
+};
+
 // Fetch all route expense configurations with their items
 export const useRoutePredefinedExpenses = () => {
   return useQuery({
@@ -97,16 +118,17 @@ export const useRoutePredefinedExpenses = () => {
         .order('route', { ascending: true });
 
       if (configError) {
-        // If table doesn't exist, return empty array
+        // If table doesn't exist, fall back to default expenses
         if (configError.code === '42P01' || configError.message?.includes('does not exist')) {
-          console.warn('route_expense_configs table not found');
-          return [];
+          console.warn('route_expense_configs table not found, using defaults');
+          return transformDefaultExpenses();
         }
         throw configError;
       }
 
       if (!configs || configs.length === 0) {
-        return [];
+        // No configs in database, fall back to defaults
+        return transformDefaultExpenses();
       }
 
       // Fetch all expense items for these configs

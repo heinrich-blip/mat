@@ -34,6 +34,7 @@ interface Trip {
   ending_km?: number;
   distance_km?: number;
   description?: string;
+  zero_revenue_comment?: string;
   edit_history?: EditHistoryRecord[];
   vehicles?: { id: string; fleet_number: string | null; registration: string | null } | null;
   wialon_vehicles?: { id: string; fleet_number: string | null; name: string | null } | null;
@@ -79,6 +80,7 @@ const CompletedTripEditModal = ({
     starting_km: trip.starting_km?.toString() || '0',
     ending_km: trip.ending_km?.toString() || '0',
     description: trip.description || '',
+    zero_revenue_comment: trip.zero_revenue_comment || '',
   });
 
   const [editReason, setEditReason] = useState('');
@@ -103,6 +105,7 @@ const CompletedTripEditModal = ({
         starting_km: trip.starting_km?.toString() || '0',
         ending_km: trip.ending_km?.toString() || '0',
         description: trip.description || '',
+        zero_revenue_comment: trip.zero_revenue_comment || '',
       });
       setEditReason('');
       setCustomReason('');
@@ -189,6 +192,7 @@ const CompletedTripEditModal = ({
       ending_km: Number(formData.ending_km),
       distance_km: calculatedDistance,
       description: formData.description,
+      zero_revenue_comment: formData.zero_revenue_comment || undefined,
     };
 
     onSave(updatedTrip, editRecord);
@@ -462,6 +466,23 @@ const CompletedTripEditModal = ({
                       : 'Enter rate and distance to calculate'}
                   </p>
                 </div>
+              </div>
+            )}
+
+            {/* Zero Revenue Comment - shown when base revenue is 0 or empty */}
+            {(!formData.base_revenue || formData.base_revenue === '0' || formData.base_revenue === '0.00') && (
+              <div className="space-y-2">
+                <Label>Zero Revenue Comment</Label>
+                <Textarea
+                  value={formData.zero_revenue_comment}
+                  onChange={(e) => handleChange('zero_revenue_comment', e.target.value)}
+                  placeholder="Explain why this trip has no revenue (e.g., repositioning, internal transfer, warranty trip)"
+                  className="resize-none"
+                  rows={2}
+                />
+                <p className="text-xs text-amber-600">
+                  Adding a comment will modify the missing revenue alert for this trip
+                </p>
               </div>
             )}
           </div>

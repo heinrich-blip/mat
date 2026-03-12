@@ -43,6 +43,7 @@ const tripSchema = z.object({
   distance_km: z.string().optional(),
   empty_km: z.string().optional(),
   empty_km_reason: z.string().optional(),
+  zero_revenue_comment: z.string().optional(),
   status: z.string().optional(),
 }).refine(
   (data) => {
@@ -74,10 +75,10 @@ const EditTripDialog = ({ isOpen, onClose, trip, onRefresh }: EditTripDialogProp
 
   // State for new costs to be added when editing
   const [tripCosts, setTripCosts] = useState<TripCostEntry[]>([]);
-  
+
   // State for route expenses from route selection
   const [selectedRouteExpenses, setSelectedRouteExpenses] = useState<RouteExpenseItem[]>([]);
-  
+
   // Track if route was changed to add new expenses
   const [routeChanged, setRouteChanged] = useState(false);
 
@@ -103,6 +104,7 @@ const EditTripDialog = ({ isOpen, onClose, trip, onRefresh }: EditTripDialogProp
       distance_km: '',
       empty_km: '',
       empty_km_reason: '',
+      zero_revenue_comment: '',
       status: 'active',
     },
   });
@@ -111,6 +113,7 @@ const EditTripDialog = ({ isOpen, onClose, trip, onRefresh }: EditTripDialogProp
   const startingKm = form.watch('starting_km');
   const endingKm = form.watch('ending_km');
   const emptyKm = form.watch('empty_km');
+  const baseRevenue = form.watch('base_revenue');
   const revenueType = form.watch('revenue_type');
   const ratePerKm = form.watch('rate_per_km');
   const distanceKm = form.watch('distance_km');
@@ -173,6 +176,7 @@ const EditTripDialog = ({ isOpen, onClose, trip, onRefresh }: EditTripDialogProp
         distance_km: trip.distance_km?.toString() || '',
         empty_km: trip.empty_km?.toString() || '',
         empty_km_reason: trip.empty_km_reason || '',
+        zero_revenue_comment: trip.zero_revenue_comment || '',
         status: trip.status || 'active',
       });
       // Reset costs state when dialog opens
@@ -211,6 +215,7 @@ const EditTripDialog = ({ isOpen, onClose, trip, onRefresh }: EditTripDialogProp
           distance_km: data.distance_km ? parseFloat(data.distance_km) : null,
           empty_km: data.empty_km ? parseFloat(data.empty_km) : null,
           empty_km_reason: data.empty_km_reason || null,
+          zero_revenue_comment: data.zero_revenue_comment || null,
           status: data.status || 'active',
           updated_at: new Date().toISOString(),
         })
@@ -222,7 +227,7 @@ const EditTripDialog = ({ isOpen, onClose, trip, onRefresh }: EditTripDialogProp
       let routeExpensesAdded = 0;
       if (routeChanged && selectedRouteExpenses.length > 0) {
         const requiredExpenses = selectedRouteExpenses.filter(e => e.is_required);
-        
+
         for (const expense of requiredExpenses) {
           const expenseEntry: Omit<CostEntry, 'id' | 'created_at' | 'updated_at'> = {
             trip_id: trip.id,
@@ -235,7 +240,7 @@ const EditTripDialog = ({ isOpen, onClose, trip, onRefresh }: EditTripDialogProp
             is_flagged: false,
             is_system_generated: true,
           };
-          
+
           try {
             await addCostEntry(expenseEntry);
             routeExpensesAdded++;
@@ -680,6 +685,31 @@ const EditTripDialog = ({ isOpen, onClose, trip, onRefresh }: EditTripDialogProp
                     )}
                   />
                 </div>
+              )}
+
+              {/* Zero Revenue Comment - shown when base revenue is 0 or empty */}
+              {(!baseRevenue || baseRevenue === '0' || baseRevenue === '0.00') && (
+                <FormField
+                  control={form.control}
+                  name="zero_revenue_comment"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Zero Revenue Comment</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder="Explain why this trip has no revenue (e.g., repositioning, internal transfer, warranty trip)"
+                          className="resize-none"
+                          rows={2}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormDesc className="text-xs text-amber-600">
+                        Adding a comment will modify the missing revenue alert for this trip
+                      </FormDesc>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               )}
             </div>
 

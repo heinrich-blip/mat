@@ -96,6 +96,7 @@ interface Trip {
   additional_costs?: AdditionalCost[];
   pod_verified?: boolean;
   notes?: string;
+  zero_revenue_comment?: string;
   // Warning/validation fields
   hasFlaggedCosts?: boolean;
   flaggedCostCount?: number;
@@ -310,8 +311,9 @@ const ActiveTrips = ({
     const tripsWithFlaggedCosts = filteredTrips.filter(t => t.hasFlaggedCosts).length;
     const tripsWithNoCosts = filteredTrips.filter(t => t.hasNoCosts).length;
     const tripsWithPendingCosts = filteredTrips.filter(t => t.hasPendingCosts).length;
-    const tripsWithNoBaseRevenue = filteredTrips.filter(t => !t.base_revenue || t.base_revenue === 0).length;
-    const tripsNeedingAttention = filteredTrips.filter(t => t.hasFlaggedCosts || t.hasNoCosts || t.hasPendingCosts || !t.base_revenue).length;
+    const tripsWithNoBaseRevenue = filteredTrips.filter(t => (!t.base_revenue || t.base_revenue === 0) && !t.zero_revenue_comment).length;
+    const tripsWithZeroRevenueComment = filteredTrips.filter(t => (!t.base_revenue || t.base_revenue === 0) && !!t.zero_revenue_comment).length;
+    const tripsNeedingAttention = filteredTrips.filter(t => t.hasFlaggedCosts || t.hasNoCosts || t.hasPendingCosts || ((!t.base_revenue || t.base_revenue === 0) && !t.zero_revenue_comment)).length;
 
     return {
       totalTrips: filteredTrips.length,
@@ -324,6 +326,7 @@ const ActiveTrips = ({
       tripsWithNoCosts,
       tripsWithPendingCosts,
       tripsWithNoBaseRevenue,
+      tripsWithZeroRevenueComment,
       tripsNeedingAttention,
     };
   }, [filteredTrips]);
@@ -413,7 +416,7 @@ const ActiveTrips = ({
         </div>
 
         {/* Missing Base Revenue Banner Alert */}
-        {filteredTrips.filter(t => !t.base_revenue || t.base_revenue === 0).length > 0 && (
+        {filteredTrips.filter(t => (!t.base_revenue || t.base_revenue === 0) && !t.zero_revenue_comment).length > 0 && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
             <div className="h-9 w-9 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
               <DollarSign className="w-4 h-4 text-amber-600" />
@@ -421,8 +424,11 @@ const ActiveTrips = ({
             <div className="flex-1">
               <p className="text-sm font-semibold text-amber-800">Missing Base Revenue</p>
               <p className="text-sm text-amber-700 mt-0.5">
-                {filteredTrips.filter(t => !t.base_revenue || t.base_revenue === 0).length} trip(s) have no base revenue set.
+                {filteredTrips.filter(t => (!t.base_revenue || t.base_revenue === 0) && !t.zero_revenue_comment).length} trip(s) have no base revenue set.
                 Please update these trips to ensure accurate profit calculations.
+                {stats.tripsWithZeroRevenueComment > 0 && (
+                  <span className="text-amber-600"> ({stats.tripsWithZeroRevenueComment} trip(s) with zero revenue have been acknowledged with a comment.)</span>
+                )}
               </p>
             </div>
             <Button
@@ -815,6 +821,8 @@ const ActiveTrips = ({
                                           <th className="text-left py-2 px-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Driver</th>
                                           <th className="text-left py-2 px-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Client</th>
                                           <th className="text-left py-2 px-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-[90px]">Date</th>
+                                          <th className="text-right py-2 px-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-[80px]">Start KM</th>
+                                          <th className="text-right py-2 px-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-[80px]">End KM</th>
                                           <th className="text-right py-2 px-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-[85px]">Distance</th>
                                           <th className="text-right py-2 px-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-[100px]">Revenue</th>
                                           <th className="text-right py-2 px-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-[100px]">Expenses</th>
@@ -827,7 +835,9 @@ const ActiveTrips = ({
                                           const profit = calculateProfit(trip);
                                           const isDuplicate = duplicatePods.some(d => d.pod === trip.trip_number);
                                           const needsAttention = trip.hasFlaggedCosts || trip.hasPendingCosts || trip.hasNoCosts;
-                                          const missingRevenue = !trip.base_revenue || trip.base_revenue === 0;
+                                          const noRevenue = !trip.base_revenue || trip.base_revenue === 0;
+                                          const missingRevenue = noRevenue && !trip.zero_revenue_comment;
+                                          const hasZeroRevenueComment = noRevenue && !!trip.zero_revenue_comment;
                                           const expenses = [...(trip.costs || []), ...(trip.additional_costs || [])].reduce((s, c) => s + (c.amount || 0), 0);
 
                                           return (
@@ -862,6 +872,16 @@ const ActiveTrips = ({
                                                         </span>
                                                       </TooltipTrigger>
                                                       <TooltipContent><p>Base revenue not set</p></TooltipContent>
+                                                    </Tooltip>
+                                                  )}
+                                                  {hasZeroRevenueComment && (
+                                                    <Tooltip>
+                                                      <TooltipTrigger>
+                                                        <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-blue-700 bg-blue-100 rounded px-1 py-0.5 shrink-0">
+                                                          <DollarSign className="h-2.5 w-2.5" />$0
+                                                        </span>
+                                                      </TooltipTrigger>
+                                                      <TooltipContent><p>Zero revenue: {trip.zero_revenue_comment}</p></TooltipContent>
                                                     </Tooltip>
                                                   )}
                                                   {trip.hasFlaggedCosts && (
@@ -914,6 +934,12 @@ const ActiveTrips = ({
                                                   </span>
                                                 )}
                                               </td>
+                                              <td className="py-2.5 px-3 text-right tabular-nums text-muted-foreground text-xs">
+                                                {trip.starting_km ? trip.starting_km.toLocaleString() : '—'}
+                                              </td>
+                                              <td className="py-2.5 px-3 text-right tabular-nums text-muted-foreground text-xs">
+                                                {trip.ending_km ? trip.ending_km.toLocaleString() : '—'}
+                                              </td>
                                               <td className="py-2.5 px-3 text-right tabular-nums text-muted-foreground">
                                                 {trip.distance_km ? `${trip.distance_km.toLocaleString()}` : '—'}
                                               </td>
@@ -930,6 +956,16 @@ const ActiveTrips = ({
                                                       </TooltipContent>
                                                     </Tooltip>
                                                   </div>
+                                                ) : hasZeroRevenueComment ? (
+                                                  <Tooltip>
+                                                    <TooltipTrigger>
+                                                      <span className="text-blue-600">$0</span>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>
+                                                      <p className="font-medium">Zero revenue (acknowledged)</p>
+                                                      <p className="text-xs">{trip.zero_revenue_comment}</p>
+                                                    </TooltipContent>
+                                                  </Tooltip>
                                                 ) : (
                                                   <span className="text-emerald-600">{formatCurrency(trip.base_revenue || 0, trip.revenue_currency)}</span>
                                                 )}
@@ -994,6 +1030,8 @@ const ActiveTrips = ({
                     <th className="text-left py-2.5 px-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Client</th>
                     <th className="text-left py-2.5 px-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Route</th>
                     <th className="text-left py-2.5 px-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Date</th>
+                    <th className="text-right py-2.5 px-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Start KM</th>
+                    <th className="text-right py-2.5 px-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">End KM</th>
                     <th className="text-right py-2.5 px-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Distance</th>
                     <th className="text-right py-2.5 px-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Revenue</th>
                     <th className="text-right py-2.5 px-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Expenses</th>
@@ -1002,11 +1040,18 @@ const ActiveTrips = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
-                  {filteredTrips.map((trip) => {
+                  {[...filteredTrips].sort((a, b) => {
+                    const numA = Number(a.trip_number);
+                    const numB = Number(b.trip_number);
+                    if (!isNaN(numA) && !isNaN(numB)) return numB - numA;
+                    return b.trip_number.localeCompare(a.trip_number, undefined, { numeric: true });
+                  }).map((trip) => {
                     const profit = calculateProfit(trip);
                     const isDuplicate = duplicatePods.some(d => d.pod === trip.trip_number);
                     const needsAttention = trip.hasFlaggedCosts || trip.hasPendingCosts || trip.hasNoCosts;
-                    const missingRevenue = !trip.base_revenue || trip.base_revenue === 0;
+                    const noRevenue = !trip.base_revenue || trip.base_revenue === 0;
+                    const missingRevenue = noRevenue && !trip.zero_revenue_comment;
+                    const hasZeroRevenueComment = noRevenue && !!trip.zero_revenue_comment;
                     const expenses = [...(trip.costs || []), ...(trip.additional_costs || [])].reduce((s, c) => s + (c.amount || 0), 0);
                     return (
                       <tr
@@ -1046,6 +1091,16 @@ const ActiveTrips = ({
                                 <DollarSign className="h-2.5 w-2.5" />No revenue
                               </span>
                             )}
+                            {hasZeroRevenueComment && (
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-blue-700 bg-blue-100 rounded px-1 py-0.5 shrink-0">
+                                    <DollarSign className="h-2.5 w-2.5" />$0
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent><p>Zero revenue: {trip.zero_revenue_comment}</p></TooltipContent>
+                              </Tooltip>
+                            )}
                             {trip.hasFlaggedCosts && (
                               <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-amber-700 bg-amber-100 rounded px-1 py-0.5 shrink-0">
                                 <AlertTriangle className="h-2.5 w-2.5" />{trip.flaggedCostCount}
@@ -1058,6 +1113,12 @@ const ActiveTrips = ({
                         </td>
                         <td className="py-2.5 px-3 text-muted-foreground tabular-nums text-xs">
                           {trip.departure_date ? format(parseISO(trip.departure_date), 'dd MMM') : '—'}
+                        </td>
+                        <td className="py-2.5 px-3 text-right tabular-nums text-muted-foreground text-xs">
+                          {trip.starting_km ? trip.starting_km.toLocaleString() : '—'}
+                        </td>
+                        <td className="py-2.5 px-3 text-right tabular-nums text-muted-foreground text-xs">
+                          {trip.ending_km ? trip.ending_km.toLocaleString() : '—'}
                         </td>
                         <td className="py-2.5 px-3 text-right tabular-nums text-muted-foreground">
                           {trip.distance_km ? `${trip.distance_km.toLocaleString()}` : '—'}
@@ -1075,6 +1136,16 @@ const ActiveTrips = ({
                                 </TooltipContent>
                               </Tooltip>
                             </div>
+                          ) : hasZeroRevenueComment ? (
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <span className="text-blue-600">$0</span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p className="font-medium">Zero revenue (acknowledged)</p>
+                                <p className="text-xs">{trip.zero_revenue_comment}</p>
+                              </TooltipContent>
+                            </Tooltip>
                           ) : (
                             <span className="text-emerald-600">{formatCurrency(trip.base_revenue || 0, trip.revenue_currency)}</span>
                           )}
