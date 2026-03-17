@@ -1,7 +1,7 @@
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -43,7 +43,6 @@ import { format } from 'date-fns';
 import {
   Building2,
   Calendar,
-  DollarSign,
   Edit,
   Eye,
   FileText,
@@ -316,13 +315,14 @@ export default function SuppliersPage() {
   return (
     <>
       <div className="space-y-6 animate-fade-in">
-        {/* Header */}
+        {/* Header with buttons only */}
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Suppliers</h1>
-            <p className="text-muted-foreground">
-              Manage your external transport suppliers and contractors
-            </p>
+          <div className="relative w-80">
+            <Input
+              placeholder="Search suppliers..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
           </div>
           <div className="flex items-center gap-3">
             <Button
@@ -1048,19 +1048,7 @@ export default function SuppliersPage() {
           </DialogContent>
         </Dialog>
 
-        {/* Filters */}
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1">
-            <Input
-              placeholder="Search suppliers..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="max-w-sm"
-            />
-          </div>
-        </div>
-
-        {/* Suppliers Grid */}
+        {/* Suppliers List */}
         {filteredSuppliers.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
@@ -1080,135 +1068,122 @@ export default function SuppliersPage() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="rounded-xl border bg-card overflow-hidden">
             {filteredSuppliers.map((supplier) => (
-              <Card key={supplier.id} className="group relative overflow-hidden hover:shadow-lg transition-all duration-300">
-                <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-12 w-12 rounded-lg bg-primary/10">
-                        <AvatarFallback className="rounded-lg bg-primary/10 text-primary">
-                          {getInitials(supplier.name)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <CardTitle className="text-lg">{supplier.name}</CardTitle>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {supplier.supplier_number}
-                        </p>
-                      </div>
-                    </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleEdit(supplier)}>
-                          <Edit className="h-4 w-4 mr-2" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem>
-                          <Eye className="h-4 w-4 mr-2" />
-                          View Consignments
-                        </DropdownMenuItem>
-                        <DropdownMenuItem>
-                          <FileText className="h-4 w-4 mr-2" />
-                          View Contracts
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          className="text-destructive"
-                          onClick={() => handleDelete(supplier.id, supplier.name)}
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {/* Status and Rating */}
-                    <div className="flex items-center justify-between">
+              <div
+                key={supplier.id}
+                className="flex items-center gap-6 p-6 border-b last:border-b-0 hover:bg-muted/50 transition-colors"
+              >
+                {/* Icon + Info */}
+                <div className="flex items-center gap-4 flex-1 min-w-0">
+                  <Avatar className="h-12 w-12 rounded-lg bg-primary/10 flex-shrink-0">
+                    <AvatarFallback className="rounded-lg bg-primary/10 text-primary">
+                      {getInitials(supplier.name)}
+                    </AvatarFallback>
+                  </Avatar>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <div className="font-semibold truncate">{supplier.name}</div>
                       {getStatusBadge(supplier.status)}
-                      {supplier.rating && (
-                        <div className="flex items-center gap-1">
-                          {Array.from({ length: 5 }).map((_, i) => (
-                            <Star
-                              key={i}
-                              className={cn(
-                                "h-3 w-3",
-                                i < supplier.rating!
-                                  ? "fill-amber-400 text-amber-400"
-                                  : "text-muted-foreground/30"
-                              )}
-                            />
-                          ))}
-                        </div>
-                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      {supplier.supplier_number}
                     </div>
 
-                    {/* Contact Info */}
-                    <div className="space-y-1.5 text-sm">
+                    <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
                       {supplier.contact_person && (
-                        <div className="flex items-center gap-2 text-muted-foreground">
+                        <div className="flex items-center gap-1.5">
                           <Building2 className="h-3.5 w-3.5" />
-                          <span>{supplier.contact_person}</span>
+                          {supplier.contact_person}
                         </div>
                       )}
                       {supplier.contact_phone && (
-                        <div className="flex items-center gap-2 text-muted-foreground">
+                        <div className="flex items-center gap-1.5">
                           <Phone className="h-3.5 w-3.5" />
-                          <span>{supplier.contact_phone}</span>
+                          {supplier.contact_phone}
                         </div>
                       )}
                       {supplier.contact_email && (
-                        <div className="flex items-center gap-2 text-muted-foreground">
+                        <div className="flex items-center gap-1.5">
                           <Mail className="h-3.5 w-3.5" />
-                          <span className="truncate">{supplier.contact_email}</span>
+                          <span className="truncate max-w-[200px]">
+                            {supplier.contact_email}
+                          </span>
                         </div>
                       )}
                       {supplier.city && (
-                        <div className="flex items-center gap-2 text-muted-foreground">
+                        <div className="flex items-center gap-1.5">
                           <MapPin className="h-3.5 w-3.5" />
-                          <span>{[supplier.city, supplier.state, supplier.country].filter(Boolean).join(', ')}</span>
+                          {[supplier.city, supplier.state, supplier.country].filter(Boolean).join(', ')}
                         </div>
                       )}
                     </div>
-
-                    {/* Contract Info */}
-                    {(supplier.contract_start_date || supplier.payment_terms) && (
-                      <div className="pt-2 border-t">
-                        {supplier.contract_start_date && (
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <Calendar className="h-3 w-3" />
-                            <span>
-                              Contract: {format(new Date(supplier.contract_start_date), 'dd MMM yyyy')}
-                              {supplier.contract_end_date && ` - ${format(new Date(supplier.contract_end_date), 'dd MMM yyyy')}`}
-                            </span>
-                          </div>
-                        )}
-                        {supplier.payment_terms && (
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-                            <DollarSign className="h-3 w-3" />
-                            <span>Terms: {supplier.payment_terms}</span>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Notes Preview */}
-                    {supplier.notes && (
-                      <p className="text-xs text-muted-foreground line-clamp-2 pt-2 border-t">
-                        {supplier.notes}
-                      </p>
-                    )}
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+
+                {/* Rating & Contract */}
+                <div className="flex items-center gap-6 flex-shrink-0">
+                  {supplier.rating && (
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <Star
+                          key={i}
+                          className={cn(
+                            "h-3.5 w-3.5",
+                            i < supplier.rating!
+                              ? "fill-amber-400 text-amber-400"
+                              : "text-muted-foreground/30"
+                          )}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  {(supplier.contract_start_date || supplier.payment_terms) && (
+                    <div className="text-xs text-muted-foreground whitespace-nowrap">
+                      {supplier.contract_start_date && (
+                        <div className="flex items-center gap-1.5">
+                          <Calendar className="h-3.5 w-3.5" />
+                          {format(new Date(supplier.contract_start_date), 'dd MMM yyyy')}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => handleEdit(supplier)}>
+                        <Edit className="h-4 w-4 mr-2" />
+                        Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        <Eye className="h-4 w-4 mr-2" />
+                        View Consignments
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        <FileText className="h-4 w-4 mr-2" />
+                        View Contracts
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        className="text-destructive"
+                        onClick={() => handleDelete(supplier.id, supplier.name)}
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
             ))}
           </div>
         )}
