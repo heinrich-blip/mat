@@ -10,13 +10,15 @@ interface MainLayoutProps {
 
 export function MainLayout({ children, title }: MainLayoutProps) {
   return (
-    <SidebarProvider>
-      <div className="flex min-h-screen w-full">
+    <SidebarProvider defaultOpen={true}>
+      <div className="flex h-screen w-full overflow-hidden">
         <AppSidebar />
-        <SidebarInset className="flex-1">
+        <SidebarInset className="flex flex-col flex-1 min-w-0 overflow-hidden">
           <AppHeader title={title} />
-          <main className="flex-1 p-6 bg-background">
-            {children}
+          <main className="flex-1 overflow-auto p-4 md:p-6 bg-background">
+            <div className="h-full">
+              {children}
+            </div>
           </main>
         </SidebarInset>
       </div>

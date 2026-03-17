@@ -1,31 +1,28 @@
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
-import
-  {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-  } from '@/components/ui/dialog';
-import
-  {
-    Form,
-    FormControl,
-    FormField,
-    FormItem,
-    FormLabel,
-    FormMessage,
-  } from '@/components/ui/form';
+import {
+Dialog,
+DialogContent,
+DialogHeader,
+DialogTitle,
+} from '@/components/ui/dialog';
+import {
+Form,
+FormControl,
+FormField,
+FormItem,
+FormLabel,
+FormMessage,
+} from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import
-  {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-  } from '@/components/ui/select';
+import {
+Select,
+SelectContent,
+SelectItem,
+SelectTrigger,
+SelectValue,
+} from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { useCreateFleetVehicle } from '@/hooks/useFleetVehicles';
 import { cn } from '@/lib/utils';
@@ -45,6 +42,7 @@ const vehicleTypes = [
   'Pickup',
 ];
 
+// FIXED: Removed all *_active fields from schema
 const formSchema = z.object({
   vehicle_id: z.string().min(2, 'Vehicle ID must be at least 2 characters'),
   type: z.string().min(1, 'Vehicle type is required'),
@@ -55,17 +53,12 @@ const formSchema = z.object({
   engine_number: z.string().optional(),
   make_model: z.string().optional(),
   engine_size: z.string().optional(),
-  // Expiry dates with active status
+  // Expiry dates only (no active flags)
   license_expiry: z.date().optional(),
-  license_active: z.boolean(),
   cof_expiry: z.date().optional(),
-  cof_active: z.boolean(),
   radio_license_expiry: z.date().optional(),
-  radio_license_active: z.boolean(),
   insurance_expiry: z.date().optional(),
-  insurance_active: z.boolean(),
   svg_expiry: z.date().optional(),
-  svg_active: z.boolean(),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -89,15 +82,11 @@ export function CreateFleetDialog({ open, onOpenChange }: CreateFleetDialogProps
       engine_number: '',
       make_model: '',
       engine_size: '',
-      license_active: true,
-      cof_active: true,
-      radio_license_active: true,
-      insurance_active: true,
-      svg_active: true,
     },
   });
 
   const handleSubmit = (data: FormData) => {
+    // FIXED: Removed all *_active fields from submission
     createFleetVehicle.mutate(
       {
         vehicle_id: data.vehicle_id,
@@ -109,15 +98,10 @@ export function CreateFleetDialog({ open, onOpenChange }: CreateFleetDialogProps
         make_model: data.make_model || null,
         engine_size: data.engine_size || null,
         license_expiry: data.license_expiry ? format(data.license_expiry, 'yyyy-MM-dd') : null,
-        license_active: data.license_active,
         cof_expiry: data.cof_expiry ? format(data.cof_expiry, 'yyyy-MM-dd') : null,
-        cof_active: data.cof_active,
         radio_license_expiry: data.radio_license_expiry ? format(data.radio_license_expiry, 'yyyy-MM-dd') : null,
-        radio_license_active: data.radio_license_active,
         insurance_expiry: data.insurance_expiry ? format(data.insurance_expiry, 'yyyy-MM-dd') : null,
-        insurance_active: data.insurance_active,
         svg_expiry: data.svg_expiry ? format(data.svg_expiry, 'yyyy-MM-dd') : null,
-        svg_active: data.svg_active,
       },
       {
         onSuccess: () => {
@@ -278,24 +262,7 @@ export function CreateFleetDialog({ open, onOpenChange }: CreateFleetDialogProps
                   name="license_expiry"
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
-                      <div className="flex items-center justify-between">
-                        <FormLabel>License Expiry Date</FormLabel>
-                        <FormField
-                          control={form.control}
-                          name="license_active"
-                          render={({ field: switchField }) => (
-                            <div className="flex items-center gap-2">
-                              <Switch
-                                checked={switchField.value}
-                                onCheckedChange={switchField.onChange}
-                              />
-                              <span className="text-xs text-muted-foreground">
-                                {switchField.value ? 'Active' : 'Inactive'}
-                              </span>
-                            </div>
-                          )}
-                        />
-                      </div>
+                      <FormLabel>License Expiry Date</FormLabel>
                       <Popover>
                         <PopoverTrigger asChild>
                           <FormControl>
@@ -331,24 +298,7 @@ export function CreateFleetDialog({ open, onOpenChange }: CreateFleetDialogProps
                   name="cof_expiry"
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
-                      <div className="flex items-center justify-between">
-                        <FormLabel>COF Expiry Date</FormLabel>
-                        <FormField
-                          control={form.control}
-                          name="cof_active"
-                          render={({ field: switchField }) => (
-                            <div className="flex items-center gap-2">
-                              <Switch
-                                checked={switchField.value}
-                                onCheckedChange={switchField.onChange}
-                              />
-                              <span className="text-xs text-muted-foreground">
-                                {switchField.value ? 'Active' : 'Inactive'}
-                              </span>
-                            </div>
-                          )}
-                        />
-                      </div>
+                      <FormLabel>COF Expiry Date</FormLabel>
                       <Popover>
                         <PopoverTrigger asChild>
                           <FormControl>
@@ -384,24 +334,7 @@ export function CreateFleetDialog({ open, onOpenChange }: CreateFleetDialogProps
                   name="radio_license_expiry"
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
-                      <div className="flex items-center justify-between">
-                        <FormLabel>Radio License Expiry Date</FormLabel>
-                        <FormField
-                          control={form.control}
-                          name="radio_license_active"
-                          render={({ field: switchField }) => (
-                            <div className="flex items-center gap-2">
-                              <Switch
-                                checked={switchField.value}
-                                onCheckedChange={switchField.onChange}
-                              />
-                              <span className="text-xs text-muted-foreground">
-                                {switchField.value ? 'Active' : 'Inactive'}
-                              </span>
-                            </div>
-                          )}
-                        />
-                      </div>
+                      <FormLabel>Radio License Expiry Date</FormLabel>
                       <Popover>
                         <PopoverTrigger asChild>
                           <FormControl>
@@ -437,24 +370,7 @@ export function CreateFleetDialog({ open, onOpenChange }: CreateFleetDialogProps
                   name="insurance_expiry"
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
-                      <div className="flex items-center justify-between">
-                        <FormLabel>Insurance Expiry Date</FormLabel>
-                        <FormField
-                          control={form.control}
-                          name="insurance_active"
-                          render={({ field: switchField }) => (
-                            <div className="flex items-center gap-2">
-                              <Switch
-                                checked={switchField.value}
-                                onCheckedChange={switchField.onChange}
-                              />
-                              <span className="text-xs text-muted-foreground">
-                                {switchField.value ? 'Active' : 'Inactive'}
-                              </span>
-                            </div>
-                          )}
-                        />
-                      </div>
+                      <FormLabel>Insurance Expiry Date</FormLabel>
                       <Popover>
                         <PopoverTrigger asChild>
                           <FormControl>
@@ -490,24 +406,7 @@ export function CreateFleetDialog({ open, onOpenChange }: CreateFleetDialogProps
                   name="svg_expiry"
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
-                      <div className="flex items-center justify-between">
-                        <FormLabel>SVG Expiry Date</FormLabel>
-                        <FormField
-                          control={form.control}
-                          name="svg_active"
-                          render={({ field: switchField }) => (
-                            <div className="flex items-center gap-2">
-                              <Switch
-                                checked={switchField.value}
-                                onCheckedChange={switchField.onChange}
-                              />
-                              <span className="text-xs text-muted-foreground">
-                                {switchField.value ? 'Active' : 'Inactive'}
-                              </span>
-                            </div>
-                          )}
-                        />
-                      </div>
+                      <FormLabel>SVG Expiry Date</FormLabel>
                       <Popover>
                         <PopoverTrigger asChild>
                           <FormControl>

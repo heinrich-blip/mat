@@ -57,7 +57,7 @@ import {
 import { useMemo, useState } from "react";
 import { AddBackloadDialog } from "./AddBackloadDialog";
 import { AddThirdPartyBackloadDialog } from "./AddThirdPartyBackloadDialog";
-import { AlterLoadTimesDialog } from "./AlterLoadTimesDialog";
+import { AlterLoadTimesDialog } from "./AlterTripTimesDialog";
 import { DeliveryConfirmationDialog } from "./DeliveryConfirmationDialog";
 import { StatusStepper } from "./StatusToggle";
 import { VehicleTrackingDialog } from "./VehicleTrackingDialog";

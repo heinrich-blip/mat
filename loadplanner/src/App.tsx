@@ -16,8 +16,10 @@ import Index from "./pages/Index";
 import LoadsPage from "./pages/TripssPage";
 import LoginPage from "./pages/LoginPage";
 import NotFound from "./pages/NotFound";
+import SuppliersPage from "./pages/Suppliers"; // Add this import
 import ThirdPartyLoadsPage from "./pages/ThirdPartyTripsPage";
 import ClientDashboardPage from "./pages/client-dashboard/ClientDashboardPage";
+import { MainLayout } from "./components/layout/MainLayout"; // Add this import if you have it
 
 // Lazy-loaded heavy pages (maps, charts, calendar)
 const CalendarPage = React.lazy(() => import("./pages/CalendarPage"));
@@ -29,13 +31,13 @@ const ShareableTrackingPage = React.lazy(() => import("./pages/ShareableTracking
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 30_000,        // Data stays fresh for 30s (stops refetch-on-focus spam)
-      gcTime: 5 * 60_000,       // Unused cache kept for 5 min
-      retry: 1,                 // Retry once on failure
+      staleTime: 30_000,
+      gcTime: 5 * 60_000,
+      retry: 1,
       refetchOnWindowFocus: false,
     },
     mutations: {
-      retry: false,             // Never auto-retry mutations (creates, updates, deletes)
+      retry: false,
     },
   },
 });
@@ -44,119 +46,155 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
       <GeofenceMonitorProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <ErrorBoundary>
-          <Suspense fallback={<div className="flex items-center justify-center h-screen"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>}>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/track" element={<ShareableTrackingPage />} />
-            {/* Public client portal - no authentication required */}
-            <Route path="/portal/:clientId/*" element={<ClientDashboardPage />} />
-            <Route
-              path="/"
-              element={
-                <ProtectedRoute>
-                  <Index />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/loads"
-              element={
-                <ProtectedRoute>
-                  <LoadsPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/calendar"
-              element={
-                <ProtectedRoute>
-                  <CalendarPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/fleet"
-              element={
-                <ProtectedRoute>
-                  <FleetPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/drivers"
-              element={
-                <ProtectedRoute>
-                  <DriversPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/customers"
-              element={
-                <ProtectedRoute>
-                  <ClientsPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/customers/:clientId/*"
-              element={
-                <ProtectedRoute>
-                  <ClientDashboardPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/reports"
-              element={
-                <ProtectedRoute>
-                  <ReportsPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/live-tracking"
-              element={
-                <ProtectedRoute>
-                  <LiveTrackingPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/third-party"
-              element={
-                <ProtectedRoute>
-                  <ThirdPartyLoadsPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/diesel-orders"
-              element={
-                <ProtectedRoute>
-                  <DieselOrdersPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/deliveries"
-              element={
-                <ProtectedRoute>
-                  <DeliveriesDashboardPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-          </Suspense>
-          </ErrorBoundary>
-        </BrowserRouter>
-      </TooltipProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <ErrorBoundary>
+              <Suspense fallback={<div className="flex items-center justify-center h-screen"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>}>
+                <Routes>
+                  <Route path="/login" element={<LoginPage />} />
+                  <Route path="/track" element={<ShareableTrackingPage />} />
+                  {/* Public client portal - no authentication required */}
+                  <Route path="/portal/:clientId/*" element={<ClientDashboardPage />} />
+
+                  {/* Protected Routes */}
+                  <Route
+                    path="/"
+                    element={
+                      <ProtectedRoute>
+                        <MainLayout>
+                          <Index />
+                        </MainLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/loads"
+                    element={
+                      <ProtectedRoute>
+                        <MainLayout>
+                          <LoadsPage />
+                        </MainLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/calendar"
+                    element={
+                      <ProtectedRoute>
+                        <MainLayout>
+                          <CalendarPage />
+                        </MainLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/fleet"
+                    element={
+                      <ProtectedRoute>
+                        <MainLayout>
+                          <FleetPage />
+                        </MainLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/drivers"
+                    element={
+                      <ProtectedRoute>
+                        <MainLayout>
+                          <DriversPage />
+                        </MainLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/customers"
+                    element={
+                      <ProtectedRoute>
+                        <MainLayout>
+                          <ClientsPage />
+                        </MainLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/customers/:clientId/*"
+                    element={
+                      <ProtectedRoute>
+                        <MainLayout>
+                          <ClientDashboardPage />
+                        </MainLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/suppliers" // Add this new route
+                    element={
+                      <ProtectedRoute>
+                        <MainLayout>
+                          <SuppliersPage />
+                        </MainLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/reports"
+                    element={
+                      <ProtectedRoute>
+                        <MainLayout>
+                          <ReportsPage />
+                        </MainLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/live-tracking"
+                    element={
+                      <ProtectedRoute>
+                        <MainLayout>
+                          <LiveTrackingPage />
+                        </MainLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/third-party"
+                    element={
+                      <ProtectedRoute>
+                        <MainLayout>
+                          <ThirdPartyLoadsPage />
+                        </MainLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/diesel-orders"
+                    element={
+                      <ProtectedRoute>
+                        <MainLayout>
+                          <DieselOrdersPage />
+                        </MainLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/deliveries"
+                    element={
+                      <ProtectedRoute>
+                        <MainLayout>
+                          <DeliveriesDashboardPage />
+                        </MainLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </Suspense>
+            </ErrorBoundary>
+          </BrowserRouter>
+        </TooltipProvider>
       </GeofenceMonitorProvider>
     </AuthProvider>
   </QueryClientProvider>

@@ -332,19 +332,22 @@ const CompletedTrips = ({ trips, onView, onRefresh, isLoading = false }: Complet
 
       if (error) throw error;
 
-      // Close modal immediately for instant feedback
+      // Close modal
       setIsEditModalOpen(false);
 
       toast({
         title: 'Trip Updated',
         description: 'Changes have been saved and logged.',
       });
+
       requestGoogleSheetsSync('trips');
 
-      // Invalidate all queries in parallel (not sequential)
-      queryClient.invalidateQueries({ queryKey: ['trips'] });
-      queryClient.invalidateQueries({ queryKey: ['delivery-dashboard-summary'] });
-      queryClient.invalidateQueries({ queryKey: ['recent-delivery-performance'] });
+      // Invalidate all queries to refresh the data
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['trips'] }),
+        queryClient.invalidateQueries({ queryKey: ['delivery-dashboard-summary'] }),
+        queryClient.invalidateQueries({ queryKey: ['recent-delivery-performance'] })
+      ]);
     } catch (error) {
       console.error('Error updating trip:', error);
       toast({
@@ -372,12 +375,14 @@ const CompletedTrips = ({ trips, onView, onRefresh, isLoading = false }: Complet
         title: 'Trip Reactivated',
         description: `POD #${trip.trip_number} has been moved back to active trips.`,
       });
+
       requestGoogleSheetsSync('trips');
 
-      // Invalidate all queries in parallel (not sequential)
-      queryClient.invalidateQueries({ queryKey: ['trips'] });
-      queryClient.invalidateQueries({ queryKey: ['delivery-dashboard-summary'] });
-      queryClient.invalidateQueries({ queryKey: ['recent-delivery-performance'] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['trips'] }),
+        queryClient.invalidateQueries({ queryKey: ['delivery-dashboard-summary'] }),
+        queryClient.invalidateQueries({ queryKey: ['recent-delivery-performance'] })
+      ]);
     } catch (error) {
       console.error('Error reactivating trip:', error);
       toast({

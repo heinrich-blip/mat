@@ -14,6 +14,7 @@ import { useWialonVehicles } from '@/hooks/useWialonVehicles';
 import { EditHistoryRecord } from '@/types/forms';
 import { AlertTriangle, History, Save, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 
 interface Trip {
   id: string;
@@ -163,7 +164,31 @@ const CompletedTripEditModal = ({
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSave = () => {
+  const resolveMissingRevenueAlert = async (tripId: string) => {
+    try {
+      const { error } = await supabase
+        .from('alerts')
+        .update({
+          status: 'resolved',
+          resolved_at: new Date().toISOString(),
+          resolved_by: userName || 'System'
+        })
+        .match({
+          source_type: 'trip',
+          source_id: tripId,
+          category: 'missing_revenue',
+          status: 'active'
+        });
+
+      if (error) {
+        console.error('Error resolving missing revenue alert:', error);
+      }
+    } catch (error) {
+      console.error('Failed to resolve missing revenue alert:', error);
+    }
+  };
+
+  const handleSave = async () => {
     if (!validateForm()) return;
 
     const finalReason = editReason === 'Other (specify in comments)' ? customReason : editReason;
@@ -194,6 +219,14 @@ const CompletedTripEditModal = ({
       description: formData.description,
       zero_revenue_comment: formData.zero_revenue_comment || undefined,
     };
+
+    // Resolve missing revenue alert if we're adding a zero revenue comment
+    const hadMissingRevenue = (!trip.base_revenue || trip.base_revenue === 0) && !trip.zero_revenue_comment;
+    const nowHasComment = formData.zero_revenue_comment && formData.zero_revenue_comment.trim() !== '';
+
+    if (hadMissingRevenue && nowHasComment) {
+      await resolveMissingRevenueAlert(trip.id);
+    }
 
     onSave(updatedTrip, editRecord);
   };

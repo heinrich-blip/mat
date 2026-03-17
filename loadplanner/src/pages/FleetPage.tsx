@@ -1,24 +1,21 @@
 import { CreateFleetDialog } from '@/components/fleet/CreateFleetDialog';
 import { EditFleetDialog } from '@/components/fleet/EditFleetDialog';
 import { ViewFleetDialog } from '@/components/fleet/ViewFleetDialog';
-import { MainLayout } from '@/components/layout/MainLayout';
-import
-  {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-  } from '@/components/ui/alert-dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useDeleteFleetVehicle, useFleetVehicles } from '@/hooks/useFleetVehicles';
 import type { FleetVehicle } from '@/hooks/useFleetVehicles';
+import { useDeleteFleetVehicle, useFleetVehicles } from '@/hooks/useFleetVehicles';
 import { cn } from '@/lib/utils';
 import { Eye, Gauge, Package, Pencil, Plus, Trash2, Truck } from 'lucide-react';
 import { useState } from 'react';
@@ -61,31 +58,39 @@ export default function FleetPage() {
 
   if (isLoading) {
     return (
-      <MainLayout title="Fleet Management">
-        <div className="space-y-6">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Fleet Vehicles</h1>
-            <p className="text-muted-foreground">Manage and monitor your fleet vehicles</p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <Card key={i}>
-                <CardHeader>
-                  <Skeleton className="h-10 w-full" />
-                </CardHeader>
-                <CardContent>
-                  <Skeleton className="h-16 w-full" />
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Fleet Vehicles</h1>
+          <p className="text-muted-foreground">Manage and monitor your fleet vehicles</p>
         </div>
-      </MainLayout>
+
+        {/* List-style loading skeletons */}
+        <div className="rounded-xl border bg-card">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div
+              key={i}
+              className="flex items-center gap-6 p-6 border-b last:border-none"
+            >
+              <Skeleton className="h-12 w-12 rounded-lg" />
+              <div className="flex-1 space-y-3">
+                <Skeleton className="h-6 w-48" />
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-4 w-56" />
+              </div>
+              <div className="flex gap-2">
+                <Skeleton className="h-8 w-8 rounded-full" />
+                <Skeleton className="h-8 w-8 rounded-full" />
+                <Skeleton className="h-8 w-8 rounded-full" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     );
   }
 
   return (
-    <MainLayout title="Fleet Management">
+    <>
       <div className="space-y-6 animate-fade-in">
         <div className="flex items-center justify-between">
           <div>
@@ -109,71 +114,78 @@ export default function FleetPage() {
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="rounded-xl border bg-card overflow-hidden">
             {fleetVehicles.map((vehicle) => (
-              <Card key={vehicle.id} className="hover:shadow-md transition-shadow">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="flex items-center gap-2">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                        <Truck className="h-5 w-5 text-primary" />
-                      </div>
-                      <span className="text-xl font-bold">{vehicle.vehicle_id}</span>
-                    </CardTitle>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        vehicle.available
-                          ? 'bg-status-scheduled-bg text-status-scheduled border-status-scheduled/20'
-                          : 'bg-status-pending-bg text-status-pending border-status-pending/20'
-                      )}
-                    >
-                      {vehicle.available ? 'Available' : 'In Use'}
-                    </Badge>
+              <div
+                key={vehicle.id}
+                className="flex items-center gap-6 p-6 border-b last:border-b-0 hover:bg-muted/50 transition-colors"
+              >
+                {/* Icon + Vehicle ID + Badge */}
+                <div className="flex items-center gap-4 flex-1 min-w-0">
+                  <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                    <Truck className="h-6 w-6 text-primary" />
                   </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Package className="h-4 w-4" />
-                    <span>{vehicle.type}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg font-semibold truncate">{vehicle.vehicle_id}</span>
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          vehicle.available
+                            ? 'bg-status-scheduled-bg text-status-scheduled border-status-scheduled/20'
+                            : 'bg-status-pending-bg text-status-pending border-status-pending/20'
+                        )}
+                      >
+                        {vehicle.available ? 'Available' : 'In Use'}
+                      </Badge>
+                    </div>
+
+                    {/* Type */}
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
+                      <Package className="h-4 w-4" />
+                      <span className="truncate">{vehicle.type}</span>
+                    </div>
+
+                    {/* Capacity */}
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Gauge className="h-4 w-4" />
                       <span>Capacity: {vehicle.capacity} Tons</span>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-primary"
-                        onClick={() => handleViewClick(vehicle)}
-                        title="View details"
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-primary"
-                        onClick={() => handleEditClick(vehicle)}
-                        title="Edit"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                        onClick={() => handleDeleteClick(vehicle)}
-                        title="Delete"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-primary"
+                    onClick={() => handleViewClick(vehicle)}
+                    title="View details"
+                  >
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-primary"
+                    onClick={() => handleEditClick(vehicle)}
+                    title="Edit"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                    onClick={() => handleDeleteClick(vehicle)}
+                    title="Delete"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
             ))}
           </div>
         )}
@@ -215,6 +227,6 @@ export default function FleetPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </MainLayout>
+    </>
   );
 }

@@ -1,7 +1,6 @@
-import { MainLayout } from "@/components/layout/MainLayout";
-import { CreateLoadDialog } from "@/components/trips/CreateLoadDialog";
+import { CreateLoadDialog } from "@/components/trips/CreateTripDialog";
 import { DeliveryConfirmationDialog } from "@/components/trips/DeliveryConfirmationDialog";
-import { EditLoadDialog } from "@/components/trips/EditLoadDialog";
+import { EditLoadDialog } from "@/components/trips/EditTripDialog";
 import { LoadsTable } from "@/components/trips/LoadsTable";
 import { QuickFilters } from "@/components/trips/QuickFilters";
 import { Button } from "@/components/ui/button";
@@ -117,15 +116,9 @@ export default function LoadsPage() {
   };
 
   return (
-    <MainLayout title="Load Planning">
+    <>
       <div className="space-y-6 animate-fade-in">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">All Loads</h1>
-            <p className="text-muted-foreground">
-              Manage and track all scheduled loads
-            </p>
-          </div>
           <div className="flex items-center gap-3">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -194,6 +187,6 @@ export default function LoadsPage() {
         onOpenChange={setDeliveryDialogOpen}
         load={selectedLoadFresh}
       />
-    </MainLayout>
+    </>
   );
 }

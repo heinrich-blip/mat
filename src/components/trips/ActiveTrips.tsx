@@ -10,10 +10,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-// Separator removed – no longer needed
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { ensureAlert } from '@/lib/alertUtils';
+import { resolveMissingRevenueAlert } from '@/lib/alertResolution';
+import { useAuth } from '@/contexts/AuthContext';
 import { addDays, format, getISOWeek, parseISO, startOfWeek } from 'date-fns';
 import {
   AlertTriangle,
@@ -128,6 +129,8 @@ const ActiveTrips = ({
   onRefresh,
   isLoading = false
 }: ActiveTripsProps) => {
+  const { userName } = useAuth();
+  
   // Filter state
   const [fleetFilter, setFleetFilter] = useState<string>('all');
   const [driverFilter, setDriverFilter] = useState<string>('all');
@@ -135,6 +138,7 @@ const ActiveTrips = ({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [viewMode, setViewMode] = useState<'grouped' | 'list'>('grouped');
   const [showMissingRevenueOnly, setShowMissingRevenueOnly] = useState<boolean>(false);
+  const [isResolvingAlert, setIsResolvingAlert] = useState<Record<string, boolean>>({});
 
   // Export dialog state
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
@@ -272,6 +276,27 @@ const ActiveTrips = ({
       });
     });
   }, [duplicatePods, trips]);
+
+  const handleEdit = async (trip: Trip) => {
+    // Check if this trip has missing revenue and no comment yet
+    const hasMissingRevenue = (!trip.base_revenue || trip.base_revenue === 0) && !trip.zero_revenue_comment;
+    
+    if (hasMissingRevenue) {
+      setIsResolvingAlert(prev => ({ ...prev, [trip.id]: true }));
+      
+      // Resolve the missing revenue alert before opening edit modal
+      await resolveMissingRevenueAlert(
+        trip.id,
+        trip.trip_number,
+        'Opening edit modal to add reason',
+        userName || 'System'
+      );
+      
+      setIsResolvingAlert(prev => ({ ...prev, [trip.id]: false }));
+    }
+    
+    onEdit(trip);
+  };
 
   const handleDelete = (id: string) => {
     const trip = trips.find((t) => t.id === id);
@@ -639,7 +664,7 @@ const ActiveTrips = ({
             <div className="flex-1">
               <p className="text-sm font-semibold text-destructive">Duplicate POD Numbers Detected</p>
               <p className="text-sm text-destructive/70 mt-0.5">
-                Duplicates: {duplicatePods.join(', ')}
+                Duplicates: {duplicatePods.map(d => d.pod).join(', ')}
               </p>
             </div>
           </div>
@@ -988,8 +1013,13 @@ const ActiveTrips = ({
                                                     <DropdownMenuItem onClick={() => onView(trip)} className="gap-2 text-xs">
                                                       <Eye className="h-3.5 w-3.5" /> View Details
                                                     </DropdownMenuItem>
-                                                    <DropdownMenuItem onClick={() => onEdit(trip)} className="gap-2 text-xs">
-                                                      <Edit className="h-3.5 w-3.5" /> Edit Trip
+                                                    <DropdownMenuItem 
+                                                      onClick={() => handleEdit(trip)} 
+                                                      className="gap-2 text-xs"
+                                                      disabled={isResolvingAlert[trip.id]}
+                                                    >
+                                                      <Edit className="h-3.5 w-3.5" /> 
+                                                      {isResolvingAlert[trip.id] ? 'Resolving Alert...' : 'Edit Trip'}
                                                     </DropdownMenuItem>
                                                     <DropdownMenuSeparator />
                                                     <DropdownMenuItem onClick={() => handleDelete(trip.id)} className="gap-2 text-xs text-destructive">
@@ -1168,8 +1198,13 @@ const ActiveTrips = ({
                               <DropdownMenuItem onClick={() => onView(trip)} className="gap-2 text-xs">
                                 <Eye className="h-3.5 w-3.5" /> View Details
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => onEdit(trip)} className="gap-2 text-xs">
-                                <Edit className="h-3.5 w-3.5" /> Edit Trip
+                              <DropdownMenuItem 
+                                onClick={() => handleEdit(trip)} 
+                                className="gap-2 text-xs"
+                                disabled={isResolvingAlert[trip.id]}
+                              >
+                                <Edit className="h-3.5 w-3.5" /> 
+                                {isResolvingAlert[trip.id] ? 'Resolving Alert...' : 'Edit Trip'}
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem onClick={() => handleDelete(trip.id)} className="gap-2 text-xs text-destructive">

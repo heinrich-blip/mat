@@ -1,4 +1,3 @@
-import { MainLayout } from "@/components/layout/MainLayout";
 import { CreateClientDialog } from "@/components/trips/CreateClientDialog";
 import { DeliveryConfirmationDialog } from "@/components/trips/DeliveryConfirmationDialog";
 import { LoadsTable } from "@/components/trips/LoadsTable";
@@ -398,17 +397,9 @@ export default function ThirdPartyLoadsPage() {
   };
 
   return (
-    <MainLayout title="Third-Party Loads">
-      <div className="space-y-6 animate-fade-in">
+    <>
+      <div className="p-6 space-y-6 animate-fade-in">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">
-              Third-Party Loads
-            </h1>
-            <p className="text-muted-foreground">
-              Manage and track third-party customer loads
-            </p>
-          </div>
           <div className="flex items-center gap-3">
             <Button
               variant="outline"
@@ -988,6 +979,6 @@ export default function ThirdPartyLoadsPage() {
         open={addLocationDialogOpen}
         onOpenChange={setAddLocationDialogOpen}
       />
-    </MainLayout>
+    </>
   );
 }

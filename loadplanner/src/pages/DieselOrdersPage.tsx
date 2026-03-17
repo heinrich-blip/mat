@@ -2,12 +2,10 @@ import { CreateDieselOrderDialog } from "@/components/diesel/CreateDieselOrderDi
 import { DieselOrderFilters } from "@/components/diesel/DieselOrderFilters";
 import { DieselOrdersTable } from "@/components/diesel/DieselOrdersTable";
 import { EditDieselOrderDialog } from "@/components/diesel/EditDieselOrderDialog";
-import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useDieselOrders } from "@/hooks/useDieselOrders";
 import type { DieselOrder } from "@/hooks/useDieselOrders";
-import { Fuel, Plus, TrendingUp } from "lucide-react";
+import { useDieselOrders } from "@/hooks/useDieselOrders";
+import { Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 
 export default function DieselOrdersPage() {
@@ -38,41 +36,15 @@ export default function DieselOrdersPage() {
     });
   }, [orders, searchQuery, statusFilter]);
 
-  // Calculate stats
-  const stats = useMemo(() => {
-    const totalOrders = orders.length;
-    const pendingOrders = orders.filter((o) => o.status === "pending").length;
-    const totalLiters = orders.reduce((sum, o) => sum + o.quantity_liters, 0);
-    const fulfilledLiters = orders
-      .filter((o) => o.status === "fulfilled")
-      .reduce((sum, o) => sum + o.quantity_liters, 0);
-
-    return {
-      totalOrders,
-      pendingOrders,
-      totalLiters,
-      fulfilledLiters,
-    };
-  }, [orders]);
-
   const handleEditOrder = (order: DieselOrder) => {
     setSelectedOrder(order);
     setEditDialogOpen(true);
   };
 
   return (
-    <MainLayout title="Diesel Orders">
-      <div className="space-y-6 animate-fade-in">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">
-              Diesel Orders
-            </h1>
-            <p className="text-muted-foreground">
-              Manage diesel orders for your fleet trips
-            </p>
-          </div>
+    <>
+      <div className="p-6 space-y-6 animate-fade-in">
+        <div className="flex justify-end">
           <Button
             onClick={() => setCreateDialogOpen(true)}
             className="bg-orange-500 hover:bg-orange-600 text-white gap-2"
@@ -80,54 +52,6 @@ export default function DieselOrdersPage() {
             <Plus className="h-4 w-4" />
             Create Order
           </Button>
-        </div>
-
-        {/* Stats Cards */}
-        <div className="grid gap-4 md:grid-cols-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                Total Orders
-              </CardTitle>
-              <Fuel className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.totalOrders}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Pending</CardTitle>
-              <div className="h-2 w-2 rounded-full bg-yellow-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.pendingOrders}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                Total Ordered
-              </CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {stats.totalLiters.toLocaleString()} L
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Fulfilled</CardTitle>
-              <div className="h-2 w-2 rounded-full bg-green-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {stats.fulfilledLiters.toLocaleString()} L
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
         {/* Filters */}
@@ -155,6 +79,6 @@ export default function DieselOrdersPage() {
         onOpenChange={setEditDialogOpen}
         order={selectedOrder}
       />
-    </MainLayout>
+    </>
   );
 }

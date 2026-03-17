@@ -1,29 +1,30 @@
 import {
-    Sidebar,
-    SidebarContent,
-    SidebarFooter,
-    SidebarGroup,
-    SidebarGroupContent,
-    SidebarGroupLabel,
-    SidebarHeader,
-    SidebarMenu,
-    SidebarMenuButton,
-    SidebarMenuItem,
-    useSidebar,
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import {
-    BarChart3,
-    Building2,
-    Calendar,
-    Fuel,
-    LayoutDashboard,
-    MapPin,
-    Package,
-    Route,
-    Settings,
-    Truck,
-    Users,
+  BarChart3,
+  Building2,
+  Calendar,
+  Fuel,
+  Handshake, // Add this icon for Suppliers
+  LayoutDashboard,
+  MapPin,
+  Package,
+  Route,
+  Settings,
+  Truck,
+  Users,
 } from "lucide-react";
 import { NavLink as RouterNavLink, useLocation } from "react-router-dom";
 
@@ -41,6 +42,7 @@ const managementItems = [
   { title: "Fleet", url: "/fleet", icon: Truck },
   { title: "Drivers", url: "/drivers", icon: Users },
   { title: "Customers", url: "/customers", icon: Building2 },
+  { title: "Suppliers", url: "/suppliers", icon: Handshake }, // Add Suppliers here
   { title: "Reports", url: "/reports", icon: BarChart3 },
 ];
 
@@ -50,18 +52,18 @@ export function AppSidebar() {
   const location = useLocation();
 
   const NavItem = ({ item }: { item: (typeof mainNavItems)[0] }) => {
-    const isActive = location.pathname === item.url;
+    const isActive = location.pathname === item.url ||
+      (item.url !== "/" && location.pathname.startsWith(item.url));
 
     return (
       <SidebarMenuItem>
-        <SidebarMenuButton asChild>
+        <SidebarMenuButton asChild isActive={isActive}>
           <RouterNavLink
             to={item.url}
             className={cn(
               "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200",
               "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-              isActive &&
-                "bg-sidebar-primary text-sidebar-primary-foreground font-medium",
+              isActive && "bg-sidebar-primary text-sidebar-primary-foreground font-medium",
             )}
           >
             <item.icon className="h-5 w-5 shrink-0" />
@@ -99,6 +101,7 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent className="px-3">
+        {/* Main Navigation */}
         <SidebarGroup>
           {!collapsed && (
             <SidebarGroupLabel className="text-sidebar-foreground/50 text-xs uppercase tracking-wider mb-2">
@@ -114,6 +117,7 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
+        {/* Management Navigation */}
         <SidebarGroup className="mt-6">
           {!collapsed && (
             <SidebarGroupLabel className="text-sidebar-foreground/50 text-xs uppercase tracking-wider mb-2">

@@ -1,13 +1,11 @@
 #root {
   width: 100%;
-  max-width: 1600px;
-  margin: 0 auto;
-  padding: 2rem 1rem;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  text-align: left;
 }
+
+/* Remove all other constraints from #root */
 
 .card {
   padding: 2rem;
@@ -16,8 +14,8 @@
   border: 1px solid hsl(var(--border));
   box-shadow: none;
   transition: border-color 0.2s ease;
-  }
-  
+}
+
 .card:hover {
   border-color: hsl(var(--accent) / 0.4);
 }
@@ -26,8 +24,8 @@
   color: hsl(var(--muted-foreground));
   font-size: 0.875rem;
   margin-top: 1.5rem;
-  }
-  
+}
+
 button:focus-visible,
 a:focus-visible {
   outline: 2px solid hsl(var(--ring));

@@ -1,79 +1,78 @@
-import { MainLayout } from "@/components/layout/MainLayout";
-import { BackloadAnalyticsTab } from "@/components/reports/BackloadAnalyticsTab";
-import { ClientFeedbackTab } from "@/components/reports/ClientFeedbackTab";
-import { DistributionTab } from "@/components/reports/DistributionTab";
-import { TimeAnalysisTab } from "@/components/reports/TimeAnalysisTab";
-import type {
-  BackloadCargoTypeData,
-  BackloadDestinationData,
-  BackloadDistribution,
-  BackloadMovement,
-  BackloadWeeklyTrend,
-  CargoDistribution,
-  DailyPunctualityRow,
-  DayOfWeekData,
-  DelayBarRow,
-  LocationVariance,
-  MonthlyTrend,
-  RouteData,
-  StatusDistribution,
-  TimeVarianceData,
-  WeeklyPunctualityRow,
-  WeeklyTrend,
-} from "@/components/reports/types";
 import { Button } from "@/components/ui/button";
+import * as timeWindowLib from "@/lib/timeWindow";
+import { timeToSASTMinutes } from "@/lib/timeWindow";
 import {
-  Card,
-  CardContent,
+Card,
+CardContent,
 } from "@/components/ui/card";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
+DropdownMenu,
+DropdownMenuContent,
+DropdownMenuItem,
+DropdownMenuLabel,
+DropdownMenuSeparator,
+DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+Select,
+SelectContent,
+SelectItem,
+SelectTrigger,
+SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { parseBackloadInfo, useLoads } from "@/hooks/useTrips";
+import { safeFormatDate } from "@/lib/utils";
 import { exportReportsToPdf, exportVarianceToPdf } from "@/lib/exportReportsToPdf";
 import { exportVarianceToExcel } from "@/lib/exportVarianceToExcel";
-import * as timeWindowLib from "@/lib/timeWindow";
-import { timeToSASTMinutes } from "@/lib/timeWindow";
-import { safeFormatDate } from "@/lib/utils";
-import {
-  eachWeekOfInterval,
-  endOfMonth,
-  endOfWeek,
-  format,
-  getDay,
-  parseISO,
-  startOfMonth,
-  subMonths,
-} from "date-fns";
-import {
-  Clock,
-  Download,
-  FileText,
-  Map as MapIcon,
-  MessageSquare,
-  Package,
-  PieChart as PieChartIcon,
-  TrendingUp,
-} from "lucide-react";
-import { useMemo, useState } from "react";
+import { DistributionTab } from "@/components/reports/DistributionTab";
+import { TimeAnalysisTab } from "@/components/reports/TimeAnalysisTab";
+import { BackloadAnalyticsTab } from "@/components/reports/BackloadAnalyticsTab";
+import { ClientFeedbackTab } from "@/components/reports/ClientFeedbackTab";
+import type {
+  CargoDistribution,
+  StatusDistribution,
+  RouteData,
+  WeeklyTrend,
+  DayOfWeekData,
+  MonthlyTrend,
+  TimeVarianceData,
+  LocationVariance,
+  BackloadDistribution,
+  BackloadDestinationData,
+  BackloadWeeklyTrend,
+  BackloadMovement,
+  BackloadCargoTypeData,
+  DailyPunctualityRow,
+  WeeklyPunctualityRow,
+  DelayBarRow,
+} from "@/components/reports/types";
 
 interface TimeWindowData {
   timeWindow: string;
   count: number;
 }
+import {
+eachWeekOfInterval,
+endOfMonth,
+endOfWeek,
+format,
+getDay,
+parseISO,
+startOfMonth,
+subMonths,
+} from "date-fns";
+import {
+Clock,
+Download,
+FileText,
+Map as MapIcon,
+MessageSquare,
+Package,
+PieChart as PieChartIcon,
+TrendingUp,
+} from "lucide-react";
+import { useMemo, useState } from "react";
 
 const CARGO_COLORS: Record<string, string> = {
   VanSalesRetail: "#6366f1",
@@ -1030,31 +1029,20 @@ export default function ReportsPage() {
 
   if (isLoading) {
     return (
-      <MainLayout title="Reports">
         <div className="flex items-center justify-center h-96">
           <div className="text-center space-y-4">
             <div className="h-12 w-12 mx-auto border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
             <p className="text-muted-foreground">Loading reports data...</p>
           </div>
         </div>
-      </MainLayout>
     );
   }
 
   return (
-    <MainLayout title="Reports">
+    <>
       <div className="space-y-8 animate-fade-in">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
-              Reports & Analytics
-            </h1>
-            <p className="text-muted-foreground mt-1">
-              Comprehensive insights into load distribution and operational
-              efficiency
-            </p>
-          </div>
           <div className="flex items-center gap-3">
             <Select
               value={timeRange}
@@ -1283,6 +1271,6 @@ export default function ReportsPage() {
           <ClientFeedbackTab granularity={granularity} timeRange={timeRange} />
         </Tabs>
       </div>
-    </MainLayout>
+    </>
   );
 }

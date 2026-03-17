@@ -46,6 +46,7 @@ const vehicleTypes = [
   'Pickup',
 ];
 
+// FIXED: Removed all *_active fields from schema
 const formSchema = z.object({
   vehicle_id: z.string().min(2, 'Vehicle ID must be at least 2 characters'),
   type: z.string().min(1, 'Vehicle type is required'),
@@ -58,17 +59,12 @@ const formSchema = z.object({
   engine_size: z.string().optional(),
   // Telematics integration
   telematics_asset_id: z.string().optional(),
-  // Expiry dates with active status
+  // Expiry dates only (no active flags)
   license_expiry: z.date().optional(),
-  license_active: z.boolean(),
   cof_expiry: z.date().optional(),
-  cof_active: z.boolean(),
   radio_license_expiry: z.date().optional(),
-  radio_license_active: z.boolean(),
   insurance_expiry: z.date().optional(),
-  insurance_active: z.boolean(),
   svg_expiry: z.date().optional(),
-  svg_active: z.boolean(),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -94,11 +90,6 @@ export function EditFleetDialog({ open, onOpenChange, vehicle }: EditFleetDialog
       make_model: '',
       engine_size: '',
       telematics_asset_id: '',
-      license_active: true,
-      cof_active: true,
-      radio_license_active: true,
-      insurance_active: true,
-      svg_active: true,
     },
   });
 
@@ -116,15 +107,10 @@ export function EditFleetDialog({ open, onOpenChange, vehicle }: EditFleetDialog
         engine_size: vehicle.engine_size || '',
         telematics_asset_id: vehicle.telematics_asset_id || '',
         license_expiry: vehicle.license_expiry ? parseISO(vehicle.license_expiry) : undefined,
-        license_active: vehicle.license_active ?? true,
         cof_expiry: vehicle.cof_expiry ? parseISO(vehicle.cof_expiry) : undefined,
-        cof_active: vehicle.cof_active ?? true,
         radio_license_expiry: vehicle.radio_license_expiry ? parseISO(vehicle.radio_license_expiry) : undefined,
-        radio_license_active: vehicle.radio_license_active ?? true,
         insurance_expiry: vehicle.insurance_expiry ? parseISO(vehicle.insurance_expiry) : undefined,
-        insurance_active: vehicle.insurance_active ?? true,
         svg_expiry: vehicle.svg_expiry ? parseISO(vehicle.svg_expiry) : undefined,
-        svg_active: vehicle.svg_active ?? true,
       });
     }
   }, [vehicle, open, form]);
@@ -132,9 +118,10 @@ export function EditFleetDialog({ open, onOpenChange, vehicle }: EditFleetDialog
   const handleSubmit = (data: FormData) => {
     if (!vehicle) return;
 
+    // FIXED: Removed all *_active fields from submission
     updateFleetVehicle.mutate(
       {
-        id: vehicle.id, // Now this will be string type
+        id: vehicle.id,
         vehicle_id: data.vehicle_id,
         type: data.type,
         capacity: data.capacity,
@@ -145,15 +132,10 @@ export function EditFleetDialog({ open, onOpenChange, vehicle }: EditFleetDialog
         engine_size: data.engine_size || null,
         telematics_asset_id: data.telematics_asset_id || null,
         license_expiry: data.license_expiry ? format(data.license_expiry, 'yyyy-MM-dd') : null,
-        license_active: data.license_active,
         cof_expiry: data.cof_expiry ? format(data.cof_expiry, 'yyyy-MM-dd') : null,
-        cof_active: data.cof_active,
         radio_license_expiry: data.radio_license_expiry ? format(data.radio_license_expiry, 'yyyy-MM-dd') : null,
-        radio_license_active: data.radio_license_active,
         insurance_expiry: data.insurance_expiry ? format(data.insurance_expiry, 'yyyy-MM-dd') : null,
-        insurance_active: data.insurance_active,
         svg_expiry: data.svg_expiry ? format(data.svg_expiry, 'yyyy-MM-dd') : null,
-        svg_active: data.svg_active,
       },
       {
         onSuccess: () => {
@@ -168,7 +150,7 @@ export function EditFleetDialog({ open, onOpenChange, vehicle }: EditFleetDialog
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent 
+      <DialogContent
         className="max-w-2xl max-h-[90vh] overflow-y-auto"
         aria-describedby="edit-fleet-dialog-description"
       >
@@ -176,7 +158,7 @@ export function EditFleetDialog({ open, onOpenChange, vehicle }: EditFleetDialog
         <p id="edit-fleet-dialog-description" className="sr-only">
           Edit fleet vehicle details form. Update vehicle information, expiry dates, and availability status.
         </p>
-        
+
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
@@ -340,24 +322,7 @@ export function EditFleetDialog({ open, onOpenChange, vehicle }: EditFleetDialog
                   name="license_expiry"
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
-                      <div className="flex items-center justify-between">
-                        <FormLabel>License Expiry</FormLabel>
-                        <FormField
-                          control={form.control}
-                          name="license_active"
-                          render={({ field: switchField }) => (
-                            <div className="flex items-center gap-2">
-                              <Switch
-                                checked={switchField.value}
-                                onCheckedChange={switchField.onChange}
-                              />
-                              <span className="text-xs text-muted-foreground">
-                                {switchField.value ? 'Active' : 'Inactive'}
-                              </span>
-                            </div>
-                          )}
-                        />
-                      </div>
+                      <FormLabel>License Expiry</FormLabel>
                       <Popover>
                         <PopoverTrigger asChild>
                           <FormControl>
@@ -394,24 +359,7 @@ export function EditFleetDialog({ open, onOpenChange, vehicle }: EditFleetDialog
                   name="cof_expiry"
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
-                      <div className="flex items-center justify-between">
-                        <FormLabel>COF Expiry</FormLabel>
-                        <FormField
-                          control={form.control}
-                          name="cof_active"
-                          render={({ field: switchField }) => (
-                            <div className="flex items-center gap-2">
-                              <Switch
-                                checked={switchField.value}
-                                onCheckedChange={switchField.onChange}
-                              />
-                              <span className="text-xs text-muted-foreground">
-                                {switchField.value ? 'Active' : 'Inactive'}
-                              </span>
-                            </div>
-                          )}
-                        />
-                      </div>
+                      <FormLabel>COF Expiry</FormLabel>
                       <Popover>
                         <PopoverTrigger asChild>
                           <FormControl>
@@ -448,24 +396,7 @@ export function EditFleetDialog({ open, onOpenChange, vehicle }: EditFleetDialog
                   name="radio_license_expiry"
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
-                      <div className="flex items-center justify-between">
-                        <FormLabel>Radio License</FormLabel>
-                        <FormField
-                          control={form.control}
-                          name="radio_license_active"
-                          render={({ field: switchField }) => (
-                            <div className="flex items-center gap-2">
-                              <Switch
-                                checked={switchField.value}
-                                onCheckedChange={switchField.onChange}
-                              />
-                              <span className="text-xs text-muted-foreground">
-                                {switchField.value ? 'Active' : 'Inactive'}
-                              </span>
-                            </div>
-                          )}
-                        />
-                      </div>
+                      <FormLabel>Radio License</FormLabel>
                       <Popover>
                         <PopoverTrigger asChild>
                           <FormControl>
@@ -502,24 +433,7 @@ export function EditFleetDialog({ open, onOpenChange, vehicle }: EditFleetDialog
                   name="insurance_expiry"
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
-                      <div className="flex items-center justify-between">
-                        <FormLabel>Insurance</FormLabel>
-                        <FormField
-                          control={form.control}
-                          name="insurance_active"
-                          render={({ field: switchField }) => (
-                            <div className="flex items-center gap-2">
-                              <Switch
-                                checked={switchField.value}
-                                onCheckedChange={switchField.onChange}
-                              />
-                              <span className="text-xs text-muted-foreground">
-                                {switchField.value ? 'Active' : 'Inactive'}
-                              </span>
-                            </div>
-                          )}
-                        />
-                      </div>
+                      <FormLabel>Insurance</FormLabel>
                       <Popover>
                         <PopoverTrigger asChild>
                           <FormControl>
@@ -556,24 +470,7 @@ export function EditFleetDialog({ open, onOpenChange, vehicle }: EditFleetDialog
                   name="svg_expiry"
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
-                      <div className="flex items-center justify-between">
-                        <FormLabel>SVG Expiry</FormLabel>
-                        <FormField
-                          control={form.control}
-                          name="svg_active"
-                          render={({ field: switchField }) => (
-                            <div className="flex items-center gap-2">
-                              <Switch
-                                checked={switchField.value}
-                                onCheckedChange={switchField.onChange}
-                              />
-                              <span className="text-xs text-muted-foreground">
-                                {switchField.value ? 'Active' : 'Inactive'}
-                              </span>
-                            </div>
-                          )}
-                        />
-                      </div>
+                      <FormLabel>SVG Expiry</FormLabel>
                       <Popover>
                         <PopoverTrigger asChild>
                           <FormControl>
@@ -636,8 +533,8 @@ export function EditFleetDialog({ open, onOpenChange, vehicle }: EditFleetDialog
               >
                 Cancel
               </Button>
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 disabled={updateFleetVehicle.isPending}
               >
                 {updateFleetVehicle.isPending ? 'Saving...' : 'Save Changes'}

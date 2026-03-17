@@ -6,7 +6,7 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
-export interface Database {
+export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
@@ -14,10 +14,54 @@ export interface Database {
   }
   public: {
     Tables: {
+      client_feedback: {
+        Row: {
+          client_id: string
+          comment: string | null
+          created_at: string
+          id: string
+          load_id: string
+          rating: string
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          comment?: string | null
+          created_at?: string
+          id?: string
+          load_id: string
+          rating: string
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          comment?: string | null
+          created_at?: string
+          id?: string
+          load_id?: string
+          rating?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_feedback_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_feedback_load_id_fkey"
+            columns: ["load_id"]
+            isOneToOne: false
+            referencedRelation: "loads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clients: {
         Row: {
           active: boolean | null
-          address: string | null
           contact_email: string | null
           contact_person: string | null
           contact_phone: string | null
@@ -33,7 +77,6 @@ export interface Database {
         }
         Insert: {
           active?: boolean | null
-          address?: string | null
           contact_email?: string | null
           contact_person?: string | null
           contact_phone?: string | null
@@ -49,7 +92,6 @@ export interface Database {
         }
         Update: {
           active?: boolean | null
-          address?: string | null
           contact_email?: string | null
           contact_person?: string | null
           contact_phone?: string | null
@@ -65,93 +107,51 @@ export interface Database {
         }
         Relationships: []
       }
-      client_feedback: {
+      custom_locations: {
         Row: {
-          id: string
-          load_id: string
-          client_id: string
-          rating: string
-          comment: string | null
+          address: string | null
+          city: string | null
+          country: string | null
           created_at: string
+          id: string
+          is_active: boolean
+          latitude: number | null
+          longitude: number | null
+          name: string
+          notes: string | null
+          province: string | null
+          type: string | null
           updated_at: string
         }
         Insert: {
-          id?: string
-          load_id: string
-          client_id: string
-          rating: string
-          comment?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          load_id?: string
-          client_id?: string
-          rating?: string
-          comment?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "client_feedback_load_id_fkey"
-            columns: ["load_id"]
-            isOneToOne: false
-            referencedRelation: "loads"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "client_feedback_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "clients"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      custom_locations: {
-        Row: {
-          country: string | null
-          created_at: string | null
-          created_by: string | null
-          id: string
-          is_active: boolean | null
-          latitude: number
-          longitude: number
-          name: string
-          notes: string | null
-          radius: number | null
-          type: string | null
-          updated_at: string | null
-        }
-        Insert: {
+          address?: string | null
+          city?: string | null
           country?: string | null
-          created_at?: string | null
-          created_by?: string | null
+          created_at?: string
           id?: string
-          is_active?: boolean | null
-          latitude: number
-          longitude: number
+          is_active?: boolean
+          latitude?: number | null
+          longitude?: number | null
           name: string
           notes?: string | null
-          radius?: number | null
+          province?: string | null
           type?: string | null
-          updated_at?: string | null
+          updated_at?: string
         }
         Update: {
+          address?: string | null
+          city?: string | null
           country?: string | null
-          created_at?: string | null
-          created_by?: string | null
+          created_at?: string
           id?: string
-          is_active?: boolean | null
-          latitude?: number
-          longitude?: number
+          is_active?: boolean
+          latitude?: number | null
+          longitude?: number | null
           name?: string
           notes?: string | null
-          radius?: number | null
+          province?: string | null
           type?: string | null
-          updated_at?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
@@ -325,21 +325,17 @@ export interface Database {
         Row: {
           available: boolean
           capacity: number
-          cof_expiry: string | null
           cof_active: boolean | null
+          cof_expiry: string | null
           created_at: string
           engine_number: string | null
           engine_size: string | null
           id: string
           insurance_expiry: string | null
-          insurance_active: boolean | null
           license_expiry: string | null
-          license_active: boolean | null
           make_model: string | null
           radio_license_expiry: string | null
-          radio_license_active: boolean | null
           svg_expiry: string | null
-          svg_active: boolean | null
           telematics_asset_id: string | null
           type: string
           updated_at: string
@@ -349,21 +345,17 @@ export interface Database {
         Insert: {
           available?: boolean
           capacity: number
-          cof_expiry?: string | null
           cof_active?: boolean | null
+          cof_expiry?: string | null
           created_at?: string
           engine_number?: string | null
           engine_size?: string | null
           id?: string
           insurance_expiry?: string | null
-          insurance_active?: boolean | null
           license_expiry?: string | null
-          license_active?: boolean | null
           make_model?: string | null
           radio_license_expiry?: string | null
-          radio_license_active?: boolean | null
           svg_expiry?: string | null
-          svg_active?: boolean | null
           telematics_asset_id?: string | null
           type: string
           updated_at?: string
@@ -373,21 +365,17 @@ export interface Database {
         Update: {
           available?: boolean
           capacity?: number
-          cof_expiry?: string | null
           cof_active?: boolean | null
+          cof_expiry?: string | null
           created_at?: string
           engine_number?: string | null
           engine_size?: string | null
           id?: string
           insurance_expiry?: string | null
-          insurance_active?: boolean | null
           license_expiry?: string | null
-          license_active?: boolean | null
           make_model?: string | null
           radio_license_expiry?: string | null
-          radio_license_active?: boolean | null
           svg_expiry?: string | null
-          svg_active?: boolean | null
           telematics_asset_id?: string | null
           type?: string
           updated_at?: string
@@ -396,55 +384,158 @@ export interface Database {
         }
         Relationships: []
       }
-      geofence_events: {
+      load_consignments: {
         Row: {
-          created_at: string
-          event_time: string
-          event_type: string
-          geofence_name: string | null
+          agreed_rate: number | null
+          assigned_at: string | null
+          cancellation_reason: string | null
+          cancelled_at: string | null
+          cargo_type: string | null
+          completed_at: string | null
+          consignment_number: string
+          created_at: string | null
+          created_by: string | null
+          delivered_at: string | null
+          destination: string
           id: string
-          latitude: number | null
-          load_id: string | null
-          load_number: string | null
-          longitude: number | null
-          source: string | null
-          telematics_asset_id: string | null
-          vehicle_registration: string | null
+          invoice_amount: number | null
+          invoice_date: string | null
+          invoice_number: string | null
+          invoice_received: boolean | null
+          loading_date: string | null
+          notes: string | null
+          offloading_date: string | null
+          origin: string
+          payment_date: string | null
+          payment_due_date: string | null
+          payment_status: string | null
+          picked_up_at: string | null
+          pod_received: boolean | null
+          pod_url: string | null
+          quantity: number | null
+          rate_currency: string | null
+          rate_type: string | null
+          source_load_id: string | null
+          special_handling: string[] | null
+          status: string | null
+          supplier_driver_license: string | null
+          supplier_driver_name: string | null
+          supplier_driver_phone: string | null
+          supplier_id: string | null
+          supplier_name: string | null
+          supplier_reference: string | null
+          supplier_vehicle_id: string | null
+          supplier_vehicle_reg: string | null
+          total_amount: number | null
+          total_distance_km: number | null
+          updated_at: string | null
+          weight: number | null
         }
         Insert: {
-          created_at?: string
-          event_time?: string
-          event_type: string
-          geofence_name?: string | null
+          agreed_rate?: number | null
+          assigned_at?: string | null
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cargo_type?: string | null
+          completed_at?: string | null
+          consignment_number: string
+          created_at?: string | null
+          created_by?: string | null
+          delivered_at?: string | null
+          destination: string
           id?: string
-          latitude?: number | null
-          load_id?: string | null
-          load_number?: string | null
-          longitude?: number | null
-          source?: string | null
-          telematics_asset_id?: string | null
-          vehicle_registration?: string | null
+          invoice_amount?: number | null
+          invoice_date?: string | null
+          invoice_number?: string | null
+          invoice_received?: boolean | null
+          loading_date?: string | null
+          notes?: string | null
+          offloading_date?: string | null
+          origin: string
+          payment_date?: string | null
+          payment_due_date?: string | null
+          payment_status?: string | null
+          picked_up_at?: string | null
+          pod_received?: boolean | null
+          pod_url?: string | null
+          quantity?: number | null
+          rate_currency?: string | null
+          rate_type?: string | null
+          source_load_id?: string | null
+          special_handling?: string[] | null
+          status?: string | null
+          supplier_driver_license?: string | null
+          supplier_driver_name?: string | null
+          supplier_driver_phone?: string | null
+          supplier_id?: string | null
+          supplier_name?: string | null
+          supplier_reference?: string | null
+          supplier_vehicle_id?: string | null
+          supplier_vehicle_reg?: string | null
+          total_amount?: number | null
+          total_distance_km?: number | null
+          updated_at?: string | null
+          weight?: number | null
         }
         Update: {
-          created_at?: string
-          event_time?: string
-          event_type?: string
-          geofence_name?: string | null
+          agreed_rate?: number | null
+          assigned_at?: string | null
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cargo_type?: string | null
+          completed_at?: string | null
+          consignment_number?: string
+          created_at?: string | null
+          created_by?: string | null
+          delivered_at?: string | null
+          destination?: string
           id?: string
-          latitude?: number | null
-          load_id?: string | null
-          load_number?: string | null
-          longitude?: number | null
-          source?: string | null
-          telematics_asset_id?: string | null
-          vehicle_registration?: string | null
+          invoice_amount?: number | null
+          invoice_date?: string | null
+          invoice_number?: string | null
+          invoice_received?: boolean | null
+          loading_date?: string | null
+          notes?: string | null
+          offloading_date?: string | null
+          origin?: string
+          payment_date?: string | null
+          payment_due_date?: string | null
+          payment_status?: string | null
+          picked_up_at?: string | null
+          pod_received?: boolean | null
+          pod_url?: string | null
+          quantity?: number | null
+          rate_currency?: string | null
+          rate_type?: string | null
+          source_load_id?: string | null
+          special_handling?: string[] | null
+          status?: string | null
+          supplier_driver_license?: string | null
+          supplier_driver_name?: string | null
+          supplier_driver_phone?: string | null
+          supplier_id?: string | null
+          supplier_name?: string | null
+          supplier_reference?: string | null
+          supplier_vehicle_id?: string | null
+          supplier_vehicle_reg?: string | null
+          total_amount?: number | null
+          total_distance_km?: number | null
+          updated_at?: string | null
+          weight?: number | null
         }
         Relationships: [
           {
-            foreignKeyName: "geofence_events_load_id_fkey"
-            columns: ["load_id"]
+            foreignKeyName: "load_consignments_source_load_id_fkey"
+            columns: ["source_load_id"]
             isOneToOne: false
             referencedRelation: "loads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "load_consignments_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
         ]
@@ -488,7 +579,7 @@ export interface Database {
           quantity: number
           special_handling: string[] | null
           status: Database["public"]["Enums"]["load_status"]
-          time_window: Json
+          time_window: string
           updated_at: string
           weight: number
         }
@@ -530,7 +621,7 @@ export interface Database {
           quantity?: number
           special_handling?: string[] | null
           status?: Database["public"]["Enums"]["load_status"]
-          time_window?: Json
+          time_window: string
           updated_at?: string
           weight?: number
         }
@@ -572,7 +663,7 @@ export interface Database {
           quantity?: number
           special_handling?: string[] | null
           status?: Database["public"]["Enums"]["load_status"]
-          time_window?: Json
+          time_window?: string
           updated_at?: string
           weight?: number
         }
@@ -607,42 +698,87 @@ export interface Database {
           },
         ]
       }
-      telematics_positions: {
+      suppliers: {
         Row: {
-          asset_id: number
+          address: string | null
+          bank_account: string | null
+          bank_branch: string | null
+          bank_name: string | null
+          city: string | null
+          contact_email: string | null
+          contact_person: string | null
+          contact_phone: string | null
+          contract_end_date: string | null
+          contract_start_date: string | null
+          country: string | null
           created_at: string | null
-          heading: number | null
+          created_by: string | null
           id: string
-          in_trip: boolean | null
-          latitude: number | null
-          longitude: number | null
-          speed: number | null
-          timestamp: string | null
+          name: string
+          notes: string | null
+          payment_terms: string | null
+          rating: number | null
+          state: string | null
+          status: string | null
+          supplier_number: string
+          swift_code: string | null
+          tax_id: string | null
           updated_at: string | null
+          zip_code: string | null
         }
         Insert: {
-          asset_id: number
+          address?: string | null
+          bank_account?: string | null
+          bank_branch?: string | null
+          bank_name?: string | null
+          city?: string | null
+          contact_email?: string | null
+          contact_person?: string | null
+          contact_phone?: string | null
+          contract_end_date?: string | null
+          contract_start_date?: string | null
+          country?: string | null
           created_at?: string | null
-          heading?: number | null
+          created_by?: string | null
           id?: string
-          in_trip?: boolean | null
-          latitude?: number | null
-          longitude?: number | null
-          speed?: number | null
-          timestamp?: string | null
+          name: string
+          notes?: string | null
+          payment_terms?: string | null
+          rating?: number | null
+          state?: string | null
+          status?: string | null
+          supplier_number: string
+          swift_code?: string | null
+          tax_id?: string | null
           updated_at?: string | null
+          zip_code?: string | null
         }
         Update: {
-          asset_id?: number
+          address?: string | null
+          bank_account?: string | null
+          bank_branch?: string | null
+          bank_name?: string | null
+          city?: string | null
+          contact_email?: string | null
+          contact_person?: string | null
+          contact_phone?: string | null
+          contract_end_date?: string | null
+          contract_start_date?: string | null
+          country?: string | null
           created_at?: string | null
-          heading?: number | null
+          created_by?: string | null
           id?: string
-          in_trip?: boolean | null
-          latitude?: number | null
-          longitude?: number | null
-          speed?: number | null
-          timestamp?: string | null
+          name?: string
+          notes?: string | null
+          payment_terms?: string | null
+          rating?: number | null
+          state?: string | null
+          status?: string | null
+          supplier_number?: string
+          swift_code?: string | null
+          tax_id?: string | null
           updated_at?: string | null
+          zip_code?: string | null
         }
         Relationships: []
       }
@@ -691,8 +827,12 @@ export interface Database {
         ]
       }
     }
-    Views: Record<never, never>
-    Functions: Record<never, never>
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
     Enums: {
       cargo_type:
         | "VanSalesRetail"
@@ -703,14 +843,16 @@ export interface Database {
         | "BV"
         | "CBC"
         | "Packaging"
-        | "Export"
         | "Vansales"
         | "Vansales/Vendor"
+        | "Export"
       load_status: "scheduled" | "in-transit" | "pending" | "delivered"
       load_time_source: "auto" | "manual"
       priority_level: "high" | "medium" | "low"
     }
-    CompositeTypes: Record<never, never>
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
 }
 
@@ -843,9 +985,9 @@ export const Constants = {
         "BV",
         "CBC",
         "Packaging",
-        "Export",
         "Vansales",
         "Vansales/Vendor",
+        "Export",
       ],
       load_status: ["scheduled", "in-transit", "pending", "delivered"],
       load_time_source: ["auto", "manual"],

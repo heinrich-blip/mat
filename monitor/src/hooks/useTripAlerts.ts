@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import {
   createDuplicatePODAlert,
   createMissingRevenueAlert,
@@ -46,7 +46,8 @@ interface AdditionalCost {
   description?: string;
 }
 
-interface Trip {
+// Export the Trip interface so it can be used by other files
+export interface Trip {
   id: string;
   trip_number: string;
   fleet_number?: string;
@@ -54,7 +55,7 @@ interface Trip {
   client_name?: string;
   base_revenue?: number;
   revenue_currency?: string;
-  payment_status?: string; // Keep in Trip interface but won't create alerts for it
+  payment_status?: string;
   hasFlaggedCosts?: boolean;
   flaggedCostCount?: number;
   hasNoCosts?: boolean;
@@ -74,6 +75,7 @@ interface UseTripAlertsOptions {
   onAlertCreated?: (alertId: string, type: string) => void;
   batchSize?: number;
   delayBetweenBatches?: number;
+  updateInterval?: number; // in milliseconds
 }
 
 export function useTripAlerts(trips: Trip[], options: UseTripAlertsOptions = {}) {
@@ -81,20 +83,31 @@ export function useTripAlerts(trips: Trip[], options: UseTripAlertsOptions = {})
     enabled = true,
     onAlertCreated,
     batchSize = 10,
-    delayBetweenBatches = 500
+    delayBetweenBatches = 500,
+    updateInterval = 3 * 60 * 60 * 1000, // 3 hours default
   } = options;
 
   const processedAlerts = useRef<Set<string>>(new Set());
   const processingRef = useRef(false);
   const previousTripStates = useRef<Map<string, Trip>>(new Map());
   const previousPODCounts = useRef<Map<string, number>>(new Map());
+  const lastUpdateTime = useRef<number>(0);
+  const mountedRef = useRef(true);
+  const timeoutRef = useRef<NodeJS.Timeout>();
 
-  useEffect(() => {
-    if (!enabled || !trips.length || processingRef.current) return;
+  // Memoize the check function to avoid recreating it unnecessarily
+  const checkTripsForAlerts = useCallback(async () => {
+    if (!enabled || !trips.length || processingRef.current || !mountedRef.current) return;
 
-    const checkTripsForAlerts = async () => {
-      processingRef.current = true;
+    // Check if enough time has passed since last update
+    const now = Date.now();
+    if (now - lastUpdateTime.current < updateInterval) {
+      return;
+    }
 
+    processingRef.current = true;
+
+    try {
       // Track current POD counts for duplicate detection
       const currentPODCounts: Map<string, number> = new Map();
 
@@ -106,7 +119,7 @@ export function useTripAlerts(trips: Trip[], options: UseTripAlertsOptions = {})
         const previousTrip = previousTripStates.current.get(trip.id);
 
         if (previousTrip) {
-          // Check if issues were resolved - removed payment_status check
+          // Check if issues were resolved
           const hadMissingRevenue = !previousTrip.base_revenue || previousTrip.base_revenue === 0;
           const hasMissingRevenueNow = !trip.base_revenue || trip.base_revenue === 0;
 
@@ -192,9 +205,13 @@ export function useTripAlerts(trips: Trip[], options: UseTripAlertsOptions = {})
 
       // Process trips in batches for creating new alerts
       for (let i = 0; i < trips.length; i += batchSize) {
+        if (!mountedRef.current) break;
+
         const batch = trips.slice(i, i + batchSize);
 
         for (const trip of batch) {
+          if (!mountedRef.current) break;
+
           const context: TripAlertContext = {
             tripId: trip.id,
             tripNumber: trip.trip_number,
@@ -308,39 +325,75 @@ export function useTripAlerts(trips: Trip[], options: UseTripAlertsOptions = {})
           }
         }
 
-        if (i + batchSize < trips.length) {
+        // Add delay between batches to prevent overwhelming the system
+        if (i + batchSize < trips.length && mountedRef.current) {
           await new Promise(resolve => setTimeout(resolve, delayBetweenBatches));
         }
       }
 
       // Check for duplicate PODs (create new alerts if needed)
-      for (const [pod, { count, tripIds, contexts }] of Object.entries(podCounts)) {
-        if (count > 1) {
-          const alertKey = `duplicate-pod-${pod}`;
-          if (!processedAlerts.current.has(alertKey)) {
-            processedAlerts.current.add(alertKey);
-            try {
-              const alertId = await createDuplicatePODAlert(pod, count, tripIds, contexts[0]);
-              onAlertCreated?.(alertId, 'duplicate_pod');
-            } catch (error) {
-              console.error('Error creating duplicate POD alert:', error);
+      if (mountedRef.current) {
+        for (const [pod, { count, tripIds, contexts }] of Object.entries(podCounts)) {
+          if (count > 1) {
+            const alertKey = `duplicate-pod-${pod}`;
+            if (!processedAlerts.current.has(alertKey)) {
+              processedAlerts.current.add(alertKey);
+              try {
+                const alertId = await createDuplicatePODAlert(pod, count, tripIds, contexts[0]);
+                onAlertCreated?.(alertId, 'duplicate_pod');
+              } catch (error) {
+                console.error('Error creating duplicate POD alert:', error);
+              }
             }
           }
         }
       }
 
+      lastUpdateTime.current = Date.now();
+    } catch (error) {
+      console.error('Error checking trips for alerts:', error);
+    } finally {
       processingRef.current = false;
+    }
+  }, [trips, enabled, batchSize, delayBetweenBatches, updateInterval, onAlertCreated]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+
+    const runAlertCheck = async () => {
+      await checkTripsForAlerts();
+
+      // Schedule next check
+      if (mountedRef.current) {
+        timeoutRef.current = setTimeout(runAlertCheck, updateInterval);
+      }
     };
 
-    checkTripsForAlerts();
-  }, [trips, enabled, onAlertCreated, batchSize, delayBetweenBatches]);
+    if (enabled) {
+      runAlertCheck();
+    }
+
+    return () => {
+      mountedRef.current = false;
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, [enabled, updateInterval, checkTripsForAlerts]); // Now includes checkTripsForAlerts
 
   // Return function to manually trigger alert checks
-  const refreshAlerts = () => {
+  const refreshAlerts = useCallback(() => {
     processedAlerts.current.clear();
     previousTripStates.current.clear();
     previousPODCounts.current.clear();
-  };
+    lastUpdateTime.current = 0; // Reset last update time to force immediate check
+  }, []);
 
-  return { refreshAlerts };
+  // Function to force an immediate check (bypasses the interval)
+  const forceCheck = useCallback(async () => {
+    lastUpdateTime.current = 0;
+    await checkTripsForAlerts();
+  }, [checkTripsForAlerts]);
+
+  return { refreshAlerts, forceCheck };
 }

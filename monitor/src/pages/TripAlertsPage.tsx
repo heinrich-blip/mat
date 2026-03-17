@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import {
   AlertTriangle,
@@ -19,7 +19,7 @@ import {
   User,
   XCircle
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 // Types for trip alerts - ONLY active and resolved statuses
@@ -33,6 +33,9 @@ interface TripAlert {
   status: 'active' | 'resolved';
   category: TripCategory;
   created_at: string;
+  resolved_at?: string;
+  resolution_comment?: string;
+  resolved_by?: string;
   metadata: {
     trip_id?: string;
     trip_number?: string;
@@ -52,7 +55,7 @@ interface TripAlert {
   };
 }
 
-// Configuration for different alert types - payment_status removed
+// Configuration for different alert types
 const ALERT_TYPE_CONFIG = {
   duplicate_pod: {
     icon: AlertTriangle,
@@ -110,6 +113,7 @@ const SEVERITY_COLORS = {
 export default function TripAlertsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("duplicate_pod");
+  const queryClient = useQueryClient();
 
   const { data: alerts = [], isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['trip-alerts'],
@@ -140,7 +144,30 @@ export default function TripAlertsPage() {
     refetchInterval: 30000,
   });
 
-  // Group alerts by type - payment_status removed
+  // Real-time subscription for alert updates
+  useEffect(() => {
+    const subscription = supabase
+      .channel('alerts-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'alerts'
+        },
+        () => {
+          // Refetch alerts when any change occurs
+          queryClient.invalidateQueries({ queryKey: ['trip-alerts'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [queryClient]);
+
+  // Group alerts by type
   const groupedAlerts = {
     duplicate_pod: alerts.filter(a => a.metadata?.issue_type === 'duplicate_pod' || a.category === 'duplicate_pod'),
     missing_revenue: alerts.filter(a => a.metadata?.issue_type === 'missing_revenue'),
@@ -219,7 +246,7 @@ export default function TripAlertsPage() {
         <Filter className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
       </div>
 
-      {/* Tabs - payment_status removed */}
+      {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="w-full h-auto flex flex-wrap gap-1 p-1">
           <TabsTrigger value="duplicate_pod" className="text-xs px-2 py-1 h-7">

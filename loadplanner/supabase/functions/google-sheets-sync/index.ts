@@ -1,38 +1,16 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-/**
- * Google Sheets Sync Edge Function
- * 
- * Syncs load time data (planned vs actual departure/arrival) to a Google Sheet.
- * Called automatically via a database webhook whenever loads are updated,
- * or manually via a POST request.
- *
- * Target spreadsheet: https://docs.google.com/spreadsheets/d/1Ep1ZpTBMT416mm9ZeC6sxl5tIrk1uU8RfSQy30xyMgM/edit
- * Spreadsheet ID:     1Ep1ZpTBMT416mm9ZeC6sxl5tIrk1uU8RfSQy30xyMgM
- *
- * Required environment variables (set via `supabase secrets set`):
- *   SUPABASE_URL                  – (auto-set by Supabase)
- *   SUPABASE_SERVICE_ROLE_KEY     – (auto-set by Supabase)
- *   GOOGLE_SHEETS_SPREADSHEET_ID  – 1Ep1ZpTBMT416mm9ZeC6sxl5tIrk1uU8RfSQy30xyMgM
- *   GOOGLE_SERVICE_ACCOUNT_EMAIL  – Google service account email (e.g. xxx@project.iam.gserviceaccount.com)
- *   GOOGLE_SERVICE_ACCOUNT_KEY    – Google service account private key (PEM, with \n replaced by \\n)
- *
- * Setup steps:
- *   1. Go to https://console.cloud.google.com → Create or select a project
- *   2. Enable the "Google Sheets API"
- *   3. Create a Service Account (IAM & Admin → Service Accounts → Create)
- *   4. Create a JSON key for the service account and download it
- *   5. Share the Google Sheet with the service account email (Editor access)
- *   6. Set the secrets:
- *      supabase secrets set GOOGLE_SHEETS_SPREADSHEET_ID=1Ep1ZpTBMT416mm9ZeC6sxl5tIrk1uU8RfSQy30xyMgM
- *      supabase secrets set GOOGLE_SERVICE_ACCOUNT_EMAIL=your-sa@project.iam.gserviceaccount.com
- *      supabase secrets set GOOGLE_SERVICE_ACCOUNT_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
- */
-
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
-const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const SPREADSHEET_ID = Deno.env.get('GOOGLE_SHEETS_SPREADSHEET_ID') || '1Ep1ZpTBMT416mm9ZeC6sxl5tIrk1uU8RfSQy30xyMgM';
+const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+const DEST_URL = Deno.env.get('DEST_SUPABASE_URL') || 'https://wxvhkljrbcpcgpgdqhsp.supabase.co';
+const DEST_ANON_KEY = Deno.env.get('DEST_SUPABASE_ANON_KEY') ||
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind4dmhrbGpyYmNwY2dwZ2RxaHNwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg2MjYzMTEsImV4cCI6MjA3NDIwMjMxMX0.8VTE9TMQYAu2kMLpHX8EzBlCspBWddNW-FYOnDZSkHU';
+const RECEIVER_URL = `${DEST_URL}/functions/v1/import-trips-from-webhook`;
+
+const SPREADSHEET_ID = '1fE5ULTrA7LT624aUn2hGppUvJjKrepEjv4B4AcwWsCM';
+const SHEET_NAME = 'Trips';
 const SERVICE_ACCOUNT_EMAIL = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_EMAIL') || '';
 const SERVICE_ACCOUNT_KEY = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_KEY') || '';
 
@@ -42,19 +20,19 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-// ---------------------------------------------------------------------------
-// Google Auth – create a JWT and exchange it for an access token
-// ---------------------------------------------------------------------------
-
+// Google Auth functions
 function base64url(data: Uint8Array): string {
   return btoa(String.fromCharCode(...data))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-async function createGoogleJWT(): Promise<string> {
+async function getGoogleAccessToken(): Promise<string> {
+  if (!SERVICE_ACCOUNT_EMAIL || !SERVICE_ACCOUNT_KEY) {
+    throw new Error('Google credentials not configured');
+  }
+
   const now = Math.floor(Date.now() / 1000);
+  const enc = new TextEncoder();
   const header = { alg: 'RS256', typ: 'JWT' };
   const payload = {
     iss: SERVICE_ACCOUNT_EMAIL,
@@ -64,36 +42,26 @@ async function createGoogleJWT(): Promise<string> {
     exp: now + 3600,
   };
 
-  const enc = new TextEncoder();
-  const headerB64 = base64url(enc.encode(JSON.stringify(header)));
-  const payloadB64 = base64url(enc.encode(JSON.stringify(payload)));
-  const unsignedToken = `${headerB64}.${payloadB64}`;
+  const h = base64url(enc.encode(JSON.stringify(header)));
+  const p = base64url(enc.encode(JSON.stringify(payload)));
+  const unsigned = `${h}.${p}`;
 
-  // Import the PEM private key
   const pemKey = SERVICE_ACCOUNT_KEY.replace(/\\n/g, '\n');
   const pemBody = pemKey
     .replace('-----BEGIN PRIVATE KEY-----', '')
     .replace('-----END PRIVATE KEY-----', '')
     .replace(/\s/g, '');
   const binaryKey = Uint8Array.from(atob(pemBody), (c) => c.charCodeAt(0));
-
   const cryptoKey = await crypto.subtle.importKey(
-    'pkcs8',
-    binaryKey,
+    'pkcs8', binaryKey,
     { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-    false,
-    ['sign'],
+    false, ['sign'],
   );
-
-  const signature = new Uint8Array(
-    await crypto.subtle.sign('RSASSA-PKCS1-v1_5', cryptoKey, enc.encode(unsignedToken)),
+  const sig = new Uint8Array(
+    await crypto.subtle.sign('RSASSA-PKCS1-v1_5', cryptoKey, enc.encode(unsigned)),
   );
+  const jwt = `${unsigned}.${base64url(sig)}`;
 
-  return `${unsignedToken}.${base64url(signature)}`;
-}
-
-async function getGoogleAccessToken(): Promise<string> {
-  const jwt = await createGoogleJWT();
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -103,623 +71,460 @@ async function getGoogleAccessToken(): Promise<string> {
     }),
   });
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Google token exchange failed: ${err}`);
-  }
-  const data = await res.json();
-  return data.access_token;
+  if (!res.ok) throw new Error(`Google token exchange failed: ${await res.text()}`);
+  return (await res.json()).access_token;
 }
 
-// ---------------------------------------------------------------------------
-// Google Sheets helpers
-// ---------------------------------------------------------------------------
-
-async function ensureSheetExists(accessToken: string, sheetName: string): Promise<void> {
-  // Get current spreadsheet metadata to check if the tab exists
-  const metaRes = await fetch(
+// Sheets helpers
+async function ensureSheetExists(token: string): Promise<void> {
+  const meta = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}?fields=sheets.properties.title`,
-    { headers: { Authorization: `Bearer ${accessToken}` } },
-  );
-  if (!metaRes.ok) {
-    const err = await metaRes.text();
-    throw new Error(`Failed to read spreadsheet metadata: ${err}`);
-  }
-  const meta = await metaRes.json();
-  const exists = meta.sheets?.some(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (s: any) => s.properties?.title === sheetName,
-  );
-  if (exists) return;
+    { headers: { Authorization: `Bearer ${token}` } },
+  ).then((r) => r.json());
 
-  // Create the sheet tab
-  const addRes = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}:batchUpdate`,
-    {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        requests: [{ addSheet: { properties: { title: sheetName } } }],
-      }),
-    },
-  );
-  if (!addRes.ok) {
-    const err = await addRes.text();
-    throw new Error(`Failed to create sheet tab "${sheetName}": ${err}`);
-  }
+  if (meta.sheets?.some((s: any) => s.properties?.title === SHEET_NAME)) return;
+
+  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}:batchUpdate`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requests: [{ addSheet: { properties: { title: SHEET_NAME } } }] }),
+  });
 }
 
-async function clearSheet(accessToken: string, sheetName: string): Promise<void> {
+async function clearSheet(token: string): Promise<void> {
   await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(sheetName)}:clear`,
+    `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(SHEET_NAME)}:clear`,
     {
       method: 'POST',
-      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
     },
   );
 }
 
-async function updateSheet(
-  accessToken: string,
-  sheetName: string,
-  values: (string | number | null)[][],
-): Promise<void> {
-  const range = `${sheetName}!A1`;
+async function writeRows(token: string, rows: (string | number | null)[][]): Promise<void> {
+  const range = `${SHEET_NAME}!A1`;
   const res = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
     {
       method: 'PUT',
-      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ range, majorDimension: 'ROWS', values }),
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ range, majorDimension: 'ROWS', values: rows }),
     },
   );
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Sheets update failed: ${err}`);
-  }
+  if (!res.ok) throw new Error(`Sheets write failed: ${await res.text()}`);
 }
 
-// ---------------------------------------------------------------------------
-// Get sheetId for formatting (the numeric ID, not the name)
-// ---------------------------------------------------------------------------
-
-async function getSheetId(accessToken: string, sheetName: string): Promise<number | null> {
-  const metaRes = await fetch(
+async function applyFormatting(token: string, totalRows: number): Promise<void> {
+  const meta = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}?fields=sheets.properties`,
-    { headers: { Authorization: `Bearer ${accessToken}` } },
-  );
-  if (!metaRes.ok) return null;
-  const meta = await metaRes.json();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sheet = meta.sheets?.find((s: any) => s.properties?.title === sheetName);
-  return sheet ? sheet.properties.sheetId : null;
-}
+    { headers: { Authorization: `Bearer ${token}` } },
+  ).then((r) => r.json());
 
-// ---------------------------------------------------------------------------
-// Apply conditional formatting: red for late variance cells, green for early
-// ---------------------------------------------------------------------------
+  const sheet = meta.sheets?.find((s: any) => s.properties?.title === SHEET_NAME);
+  if (!sheet) return;
 
-async function applyVarianceFormatting(
-  accessToken: string,
-  sheetId: number,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  varianceMap: { row: number; col: number; isLate: boolean; isEarly: boolean }[],
-  totalRows: number,
-  totalCols: number,
-  weekHeaderRows: number[] = [],
-): Promise<void> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const requests: any[] = [];
+  const sheetId = sheet.properties.sheetId;
+  const colCount = HEADER_ROW.length;
 
-  // Header row formatting: bold + grey background
-  requests.push({
-    repeatCell: {
-      range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: totalCols },
-      cell: {
-        userEnteredFormat: {
-          backgroundColor: { red: 0.9, green: 0.9, blue: 0.9 },
-          textFormat: { bold: true, fontSize: 10 },
-        },
-      },
-      fields: 'userEnteredFormat(backgroundColor,textFormat)',
-    },
-  });
-
-  // Freeze header row
-  requests.push({
-    updateSheetProperties: {
-      properties: { sheetId, gridProperties: { frozenRowCount: 1 } },
-      fields: 'gridProperties.frozenRowCount',
-    },
-  });
-
-  // Red background for late cells, green for early
-  for (const cell of varianceMap) {
-    const bgColor = cell.isLate
-      ? { red: 1.0, green: 0.8, blue: 0.8 }   // light red
-      : { red: 0.8, green: 1.0, blue: 0.8 };    // light green
-
-    const textColor = cell.isLate
-      ? { red: 0.7, green: 0.0, blue: 0.0 }   // dark red text
-      : { red: 0.0, green: 0.5, blue: 0.0 };    // dark green text
-
-    requests.push({
-      repeatCell: {
-        range: {
-          sheetId,
-          startRowIndex: cell.row,
-          endRowIndex: cell.row + 1,
-          startColumnIndex: cell.col,
-          endColumnIndex: cell.col + 1,
-        },
-        cell: {
-          userEnteredFormat: {
-            backgroundColor: bgColor,
-            textFormat: { bold: true, foregroundColor: textColor },
-          },
-        },
-        fields: 'userEnteredFormat(backgroundColor,textFormat)',
-      },
-    });
-  }
-
-  // Week header rows: dark blue background, white bold text, merge across all columns
-  for (const weekRow of weekHeaderRows) {
-    // Merge cells across the full width
-    requests.push({
-      mergeCells: {
-        range: {
-          sheetId,
-          startRowIndex: weekRow,
-          endRowIndex: weekRow + 1,
-          startColumnIndex: 0,
-          endColumnIndex: totalCols,
-        },
-        mergeType: 'MERGE_ALL',
-      },
-    });
-    // Style: dark blue bg, white bold text, slightly larger font
-    requests.push({
-      repeatCell: {
-        range: {
-          sheetId,
-          startRowIndex: weekRow,
-          endRowIndex: weekRow + 1,
-          startColumnIndex: 0,
-          endColumnIndex: totalCols,
-        },
-        cell: {
-          userEnteredFormat: {
-            backgroundColor: { red: 0.16, green: 0.25, blue: 0.45 },  // dark navy blue
-            textFormat: {
-              bold: true,
-              fontSize: 11,
-              foregroundColor: { red: 1.0, green: 1.0, blue: 1.0 },  // white text
+  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}:batchUpdate`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      requests: [
+        {
+          repeatCell: {
+            range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: colCount },
+            cell: {
+              userEnteredFormat: {
+                backgroundColor: { red: 0.16, green: 0.25, blue: 0.45 },
+                textFormat: { bold: true, fontSize: 10, foregroundColor: { red: 1, green: 1, blue: 1 } },
+              },
             },
-            horizontalAlignment: 'LEFT',
-            verticalAlignment: 'MIDDLE',
-            padding: { top: 4, bottom: 4 },
+            fields: 'userEnteredFormat(backgroundColor,textFormat)',
           },
         },
-        fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,padding)',
-      },
-    });
-    // Set row height slightly taller for week headers
-    requests.push({
-      updateDimensionProperties: {
-        range: {
-          sheetId,
-          dimension: 'ROWS',
-          startIndex: weekRow,
-          endIndex: weekRow + 1,
+        {
+          updateSheetProperties: {
+            properties: { sheetId, gridProperties: { frozenRowCount: 1 } },
+            fields: 'gridProperties.frozenRowCount',
+          },
         },
-        properties: { pixelSize: 32 },
-        fields: 'pixelSize',
-      },
-    });
-  }
-
-  // Auto-resize columns
-  requests.push({
-    autoResizeDimensions: {
-      dimensions: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: totalCols },
-    },
+        {
+          autoResizeDimensions: {
+            dimensions: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: colCount },
+          },
+        },
+      ],
+    }),
   });
-
-  if (requests.length === 0) return;
-
-  const res = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}:batchUpdate`,
-    {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requests }),
-    },
-  );
-  if (!res.ok) {
-    const err = await res.text();
-    console.error(`Formatting failed (non-fatal): ${err}`);
-  }
 }
 
-// ---------------------------------------------------------------------------
-// Time helpers
-// ---------------------------------------------------------------------------
-
-function timeToMinutes(time: string | undefined | null): number | null {
-  if (!time) return null;
-  // Plain HH:mm — assumed to be already in SAST
-  const hm = time.match(/^(\d{1,2}):(\d{2})$/);
-  if (hm) return parseInt(hm[1], 10) * 60 + parseInt(hm[2], 10);
-  // HH:mm:ss — assumed to be already in SAST
-  const hms = time.match(/^(\d{1,2}):(\d{2}):\d{2}/);
-  if (hms) return parseInt(hms[1], 10) * 60 + parseInt(hms[2], 10);
-  // ISO timestamp — convert to SAST (UTC+2) using manual offset.
-  // South Africa does not observe daylight saving time, so UTC+2 is always correct.
-  const d = new Date(time);
-  if (!isNaN(d.getTime())) {
-    const sastMs = d.getTime() + 2 * 60 * 60 * 1000;
-    const sast = new Date(sastMs);
-    return sast.getUTCHours() * 60 + sast.getUTCMinutes();
-  }
-  return null;
-}
-
-function computeVariance(
-  planned: string | undefined | null,
-  actual: string | undefined | null,
-): { label: string; diffMin: number | null; isLate: boolean } {
-  const pMin = timeToMinutes(planned);
-  const aMin = timeToMinutes(actual);
-  if (pMin === null || aMin === null) return { label: '', diffMin: null, isLate: false };
-  const diff = aMin - pMin;
-  if (diff === 0) return { label: 'On time', diffMin: 0, isLate: false };
-  const abs = Math.abs(diff);
-  const hrs = Math.floor(abs / 60);
-  const mins = abs % 60;
-  const parts: string[] = [];
-  if (hrs > 0) parts.push(`${hrs}h`);
-  if (mins > 0) parts.push(`${mins}m`);
-  const tag = diff > 0 ? 'late' : 'early';
-  return { label: `${parts.join(' ')} ${tag}`, diffMin: diff, isLate: diff > 0 };
-}
-
-function formatTime(ts: string | null | undefined): string {
-  if (!ts) return '';
+// Helpers
+function fmtDate(val: string | null | undefined): string {
+  if (!val) return '';
   try {
-    // Simple "HH:mm" format — return as-is (padded)
-    if (/^\d{1,2}:\d{2}$/.test(ts)) return ts.padStart(5, '0');
-    // HH:mm:ss — strip seconds, pad
-    const hmsMatch = ts.match(/^(\d{1,2}):(\d{2}):\d{2}/);
-    if (hmsMatch) return `${hmsMatch[1].padStart(2, '0')}:${hmsMatch[2]}`;
-    // Parse as Date and convert to SAST (UTC+2) using manual offset.
-    // South Africa does not observe daylight saving time, so UTC+2 is always correct.
-    const d = new Date(ts);
-    if (isNaN(d.getTime())) return ts;
-    const sastMs = d.getTime() + 2 * 60 * 60 * 1000;
-    const sast = new Date(sastMs);
-    const hour = String(sast.getUTCHours()).padStart(2, '0');
-    const minute = String(sast.getUTCMinutes()).padStart(2, '0');
-    return `${hour}:${minute}`;
-  } catch {
-    return ts;
-  }
-}
-
-function formatDate(isoDate: string | null | undefined): string {
-  if (!isoDate) return '';
-  try {
-    const d = new Date(isoDate);
-    if (isNaN(d.getTime())) return isoDate;
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return val;
     return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-  } catch {
-    return isoDate;
-  }
+  } catch { return val; }
 }
 
-/** Get the ISO week number for a date */
-function getISOWeek(date: Date): number {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const dayNum = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
-}
-
-/** Get Monday of the ISO week containing the given date */
-function getWeekMonday(date: Date): Date {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const day = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() - day + 1);
-  return d;
-}
-
-/** Format a week header label like "Week 8 — 17 Feb – 23 Feb 2026" */
-function weekLabel(date: Date): string {
-  const weekNum = getISOWeek(date);
-  const monday = getWeekMonday(date);
-  const sunday = new Date(monday);
-  sunday.setUTCDate(monday.getUTCDate() + 6);
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const fmtDay = (d: Date) => `${d.getUTCDate()} ${months[d.getUTCMonth()]}`;
-  return `Week ${weekNum} — ${fmtDay(monday)} – ${fmtDay(sunday)} ${sunday.getUTCFullYear()}`;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function parseTimeWindow(tw: any): { origin: any; destination: any } {
+function parseTW(tw: any): { origin: any; destination: any } {
   try {
-    const data = typeof tw === 'string' ? JSON.parse(tw || '{}') : (tw ?? {});
-    return {
-      origin: data.origin || {},
-      destination: data.destination || {},
-    };
+    const d = typeof tw === 'string' ? JSON.parse(tw || '{}') : (tw ?? {});
+    return { origin: d.origin || {}, destination: d.destination || {} };
   } catch {
     return { origin: {}, destination: {} };
   }
 }
 
-function buildNote(
-  label: string,
-  planned: string | undefined | null,
-  actual: string | undefined | null,
-): string {
-  const v = computeVariance(planned, actual);
-  if (v.diffMin === null) return '';
-  if (v.diffMin === 0) return `${label}: On time`;
-  if (v.isLate) return `⚠️ ${label}: ${v.label} — time not met`;
-  return `${label}: ${v.label}`;
+// Sheet columns
+const HEADER_ROW = [
+  'Load ID', 'Status', 'Vehicle', 'Driver',
+  'Origin', 'Destination', 'Route', 'Cargo Type',
+  'Loading Date', 'Offloading Date',
+  'Planned Loading Arrival', 'Planned Loading Departure',
+  'Planned Offloading Arrival', 'Planned Offloading Departure',
+  'Notes', 'Last Synced',
+];
+
+function buildRow(load: any): (string | number | null)[] {
+  const v = load.fleet_vehicles as any;
+  const dr = load.drivers as any;
+  const tw = parseTW(load.time_window);
+  const o = load.origin || '';
+  const d = load.destination || '';
+
+  return [
+    load.load_id || '',
+    load.status || '',
+    v?.vehicle_id || '',
+    dr?.name || '',
+    o,
+    d,
+    o && d ? `${o} - ${d}` : (o || d),
+    load.cargo_type || '',
+    fmtDate(load.loading_date),
+    fmtDate(load.offloading_date),
+    tw.origin.plannedArrival || '',
+    tw.origin.plannedDeparture || '',
+    tw.destination.plannedArrival || '',
+    tw.destination.plannedDeparture || '',
+    load.notes || '',
+    fmtDate(new Date().toISOString()),
+  ];
 }
 
-// ---------------------------------------------------------------------------
-// Main handler
-// ---------------------------------------------------------------------------
+// Get client name from client_id
+async function getClientName(clientId: string): Promise<string | null> {
+  if (!clientId) return null;
 
+  const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+  const { data: client } = await supabase
+    .from('clients')
+    .select('name')
+    .eq('id', clientId)
+    .maybeSingle();
+
+  return client?.name || null;
+}
+
+// Get driver name from driver_id
+async function getDriverName(driverId: string): Promise<string | null> {
+  if (!driverId) return null;
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+  const { data: driver } = await supabase
+    .from('drivers')
+    .select('name')
+    .eq('id', driverId)
+    .maybeSingle();
+
+  return driver?.name || null;
+}
+
+// Get vehicle identifiers from fleet_vehicle_id
+async function getVehicleInfo(fleetVehicleId: string): Promise<{ fleetNumber: string | null; vehicleId: string | null }> {
+  if (!fleetVehicleId) return { fleetNumber: null, vehicleId: null };
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  // Get fleet vehicle info
+  const { data: fleetVehicle } = await supabase
+    .from('fleet_vehicles')
+    .select('vehicle_id')
+    .eq('id', fleetVehicleId)
+    .maybeSingle();
+
+  if (!fleetVehicle) return { fleetNumber: null, vehicleId: null };
+
+  // Try to find matching wialon vehicle
+  const { data: wialonVehicle } = await supabase
+    .from('wialon_vehicles')
+    .select('id')
+    .or(`fleet_number.ilike.${fleetVehicle.vehicle_id},vehicle_id.ilike.${fleetVehicle.vehicle_id}`)
+    .maybeSingle();
+
+  return {
+    fleetNumber: fleetVehicle.vehicle_id,
+    vehicleId: wialonVehicle?.id || null
+  };
+}
+
+// Post to receiver with proper mapping
+async function postToReceiver(load: any): Promise<{ ok: boolean; created: boolean; updated: boolean; error: string }> {
+  // Get related data
+  const clientName = load.client_id ? await getClientName(load.client_id) : null;
+  const driverName = load.driver_id ? await getDriverName(load.driver_id) : null;
+  const vehicleInfo = load.fleet_vehicle_id ? await getVehicleInfo(load.fleet_vehicle_id) : { fleetNumber: null, vehicleId: null };
+
+  // Calculate trip duration safely
+  let tripDurationHours: number | null = null;
+  if (load.loading_date && load.offloading_date) {
+    try {
+      const diff = new Date(load.offloading_date).getTime() - new Date(load.loading_date).getTime();
+      if (diff > 0) {
+        tripDurationHours = Math.round((diff / 3600000) * 10) / 10;
+      }
+    } catch (e) {
+      console.warn(`⚠️ Could not calculate duration for ${load.load_id}:`, e);
+    }
+  }
+
+  // Build payload matching receiver's expected structure
+  const payload = {
+    loadRef: load.load_id,
+    customer: clientName,
+    origin: load.origin || null,
+    destination: load.destination || null,
+    shippedDate: load.loading_date || null,
+    deliveredDate: load.offloading_date || null,
+    shippedStatus: load.status,  // Will be converted to boolean in receiver
+    deliveredStatus: null,
+    tripDurationHours: tripDurationHours,
+    importSource: 'loads_sync',
+    currency: 'USD',
+    driverName: driverName,
+    fleetNumber: vehicleInfo.fleetNumber,
+    vehicleId: vehicleInfo.vehicleId,
+    cargoType: load.cargo_type || null,
+    notes: load.notes || null,
+    clientId: load.client_id || null
+  };
+
+  console.log(`📤 → Receiver for load: ${load.load_id}`, JSON.stringify(payload, null, 2));
+
+  try {
+    const res = await fetch(RECEIVER_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${DEST_ANON_KEY}`,
+        'apikey': DEST_ANON_KEY,
+        'x-source': 'loads_sync',
+      },
+      body: JSON.stringify({ trips: [payload] }),
+    });
+
+    const responseText = await res.text();
+
+    if (!res.ok) {
+      console.error(`❌ Receiver error (${res.status}) for ${load.load_id}:`, responseText);
+      return {
+        ok: false,
+        created: false,
+        updated: false,
+        error: `HTTP ${res.status}: ${responseText}`
+      };
+    }
+
+    try {
+      const data = JSON.parse(responseText);
+      const created = data.results?.created > 0;
+      const updated = data.results?.updated > 0;
+      return { ok: true, created, updated: updated || !created, error: '' };
+    } catch {
+      return { ok: true, created: false, updated: true, error: '' };
+    }
+
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error(`❌ Receiver fetch error for ${load.load_id}:`, errorMsg);
+    return { ok: false, created: false, updated: false, error: errorMsg };
+  }
+}
+
+// Main handler
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    // Validate configuration
-    if (!SPREADSHEET_ID || !SERVICE_ACCOUNT_EMAIL || !SERVICE_ACCOUNT_KEY) {
+    if (!SERVICE_ACCOUNT_EMAIL || !SERVICE_ACCOUNT_KEY) {
       return new Response(
-        JSON.stringify({
-          error: 'Google Sheets integration not configured',
-          setup: {
-            required: [
-              'GOOGLE_SHEETS_SPREADSHEET_ID',
-              'GOOGLE_SERVICE_ACCOUNT_EMAIL',
-              'GOOGLE_SERVICE_ACCOUNT_KEY',
-            ],
-            instructions: [
-              '1. Create a Google Cloud project and enable the Google Sheets API',
-              '2. Create a service account and download the JSON key',
-              '3. Share your Google Sheet with the service account email',
-              '4. Set the environment variables in Supabase Edge Function secrets',
-            ],
-          },
-        }),
+        JSON.stringify({ error: 'Google Sheets credentials not configured' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
 
-    // Parse optional body — allows filtering by load IDs or date range
-    let loadIds: string[] | null = null;
-    let dateFrom: string | null = null;
-    let dateTo: string | null = null;
-
-    if (req.method === 'POST') {
-      try {
-        const body = await req.json();
-        loadIds = body.loadIds || null;
-        dateFrom = body.dateFrom || null;
-        dateTo = body.dateTo || null;
-      } catch {
-        // Empty body is fine — sync all loads
-      }
+    // Parse request body
+    let body;
+    try {
+      body = await req.json();
+      console.log('📦 Request body:', JSON.stringify(body, null, 2));
+    } catch {
+      body = {};
     }
 
-    // Fetch loads from Supabase
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    // Handle different request formats
+    let loadIds: string[] | null = null;
 
+    if (body.id) {
+      loadIds = [body.id];
+    } else if (body.load_id) {
+      loadIds = [body.load_id];
+    } else if (body.loadIds && Array.isArray(body.loadIds)) {
+      loadIds = body.loadIds;
+    }
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    // Select all relevant fields from loads table
     let query = supabase
       .from('loads')
       .select(`
-        id, load_id, status, origin, destination, cargo_type, loading_date, offloading_date,
-        time_window, notes,
-        actual_loading_arrival, actual_loading_arrival_verified, actual_loading_arrival_source,
-        actual_loading_departure, actual_loading_departure_verified, actual_loading_departure_source,
-        actual_offloading_arrival, actual_offloading_arrival_verified, actual_offloading_arrival_source,
-        actual_offloading_departure, actual_offloading_departure_verified, actual_offloading_departure_source,
-        fleet_vehicles!loads_fleet_vehicle_id_fkey(vehicle_id, type),
-        drivers!loads_driver_id_fkey(name, contact)
+        id, load_id, status, origin, destination, cargo_type,
+        loading_date, offloading_date, time_window, notes, created_at,
+        client_id, fleet_vehicle_id, driver_id,
+        fleet_vehicles!loads_fleet_vehicle_id_fkey ( vehicle_id, type ),
+        drivers!loads_driver_id_fkey ( name, contact )
       `)
-      .order('loading_date', { ascending: true });
+      .order('loading_date', { ascending: false });
 
     if (loadIds && loadIds.length > 0) {
       query = query.in('id', loadIds);
     }
-    if (dateFrom) {
-      query = query.gte('loading_date', dateFrom);
-    }
-    if (dateTo) {
-      query = query.lte('loading_date', dateTo);
+
+    const { data: loads, error: loadError } = await query.limit(500);
+
+    if (loadError) {
+      console.error('❌ Database error:', loadError);
+      throw loadError;
     }
 
-    const { data: loads, error: loadError } = await query;
-    if (loadError) throw loadError;
     if (!loads || loads.length === 0) {
       return new Response(
-        JSON.stringify({ success: true, message: 'No loads found to sync', rowsSynced: 0 }),
+        JSON.stringify({
+          success: true,
+          message: 'No loads found to sync',
+          rowsSynced: 0
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
 
-    // Build sheet data
-    const SHEET_NAME = 'Time Comparison';
+    console.log(`📊 Found ${loads.length} loads to process`);
 
-    const headerRow = [
-      'Load ID', 'Status', 'Vehicle', 'Driver', 'Origin', 'Destination', 'Loading Date',
-      'Planned Loading Arrival', 'Actual Loading Arrival', 'Loading Arrival Variance',
-      'Planned Loading Departure', 'Actual Loading Departure', 'Loading Departure Variance',
-      'Planned Offloading Arrival', 'Actual Offloading Arrival', 'Offloading Arrival Variance',
-      'Planned Offloading Departure', 'Actual Offloading Departure', 'Offloading Departure Variance',
-      'Late Reason', 'Notes', 'Last Updated',
-    ];
-
-    // Track cells that need red/green formatting: { row, col, isLate, isEarly }
-    const varianceCells: { row: number; col: number; isLate: boolean; isEarly: boolean }[] = [];
-    // Track which rows are week-header rows (for formatting)
-    const weekHeaderRows: number[] = [];
-
-    // Variance column indices (0-based): 9, 12, 15, 18
-    const VARIANCE_COL_INDICES = [9, 12, 15, 18];
-
-    // Build per-load row data first, then group by week
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const loadRows: { weekKey: string; weekLabelText: string; variances: { diffMin: number | null; isLate: boolean }[]; row: any[] }[] = loads.map((load: any) => {
-      const tw = parseTimeWindow(load.time_window);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const vehicle = (load.fleet_vehicles as any);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const driver = (load.drivers as any);
-
-      const actualLA = load.actual_loading_arrival || tw.origin.actualArrival || '';
-      const actualLD = load.actual_loading_departure || tw.origin.actualDeparture || '';
-      const actualOA = load.actual_offloading_arrival || tw.destination.actualArrival || '';
-      const actualOD = load.actual_offloading_departure || tw.destination.actualDeparture || '';
-
-      // Convert actual times to SAST "HH:mm" strings FIRST, then compute
-      // variances on same-timezone strings. This avoids any Intl / runtime bugs
-      // where ISO timestamps might be compared in UTC instead of SAST.
-      const actualLAFormatted = formatTime(actualLA);
-      const actualLDFormatted = formatTime(actualLD);
-      const actualOAFormatted = formatTime(actualOA);
-      const actualODFormatted = formatTime(actualOD);
-
-      const laVar = computeVariance(tw.origin.plannedArrival, actualLAFormatted);
-      const ldVar = computeVariance(tw.origin.plannedDeparture, actualLDFormatted);
-      const oaVar = computeVariance(tw.destination.plannedArrival, actualOAFormatted);
-      const odVar = computeVariance(tw.destination.plannedDeparture, actualODFormatted);
-
-      const notes: string[] = [];
-      const n1 = buildNote('Loading Arrival', tw.origin.plannedArrival, actualLAFormatted);
-      const n2 = buildNote('Loading Departure', tw.origin.plannedDeparture, actualLDFormatted);
-      const n3 = buildNote('Offloading Arrival', tw.destination.plannedArrival, actualOAFormatted);
-      const n4 = buildNote('Offloading Departure', tw.destination.plannedDeparture, actualODFormatted);
-      if (n1) notes.push(n1);
-      if (n2) notes.push(n2);
-      if (n3) notes.push(n3);
-      if (n4) notes.push(n4);
-
-      // Get variance reason from time_window JSON (per-field notes + legacy combined)
-      let varianceReason = '';
-      try {
-        const rawTw = typeof load.time_window === 'string' ? JSON.parse(load.time_window || '{}') : (load.time_window ?? {});
-        // Prefer per-field notes if available
-        const perField: string[] = [];
-        if (rawTw.origin?.arrivalNote) perField.push(`Load Arr: ${rawTw.origin.arrivalNote}`);
-        if (rawTw.origin?.departureNote) perField.push(`Load Dep: ${rawTw.origin.departureNote}`);
-        if (rawTw.destination?.arrivalNote) perField.push(`Offload Arr: ${rawTw.destination.arrivalNote}`);
-        if (rawTw.destination?.departureNote) perField.push(`Offload Dep: ${rawTw.destination.departureNote}`);
-        varianceReason = perField.length > 0 ? perField.join(' | ') : (rawTw.varianceReason || '');
-      } catch { /* ignore */ }
-
-      // Compute week key for grouping (YYYY-Www)
-      const loadDate = new Date(load.loading_date);
-      const wk = getISOWeek(loadDate);
-      const yr = loadDate.getFullYear();
-      const weekKey = `${yr}-W${String(wk).padStart(2, '0')}`;
-      const weekLabelText = weekLabel(loadDate);
-
-      return {
-        weekKey,
-        weekLabelText,
-        variances: [laVar, ldVar, oaVar, odVar],
-        row: [
-          load.load_id,
-          load.status,
-          vehicle?.vehicle_id || '',
-          driver?.name || '',
-          load.origin,
-          load.destination,
-          formatDate(load.loading_date),
-          tw.origin.plannedArrival || '',
-          actualLAFormatted,
-          laVar.label,
-          tw.origin.plannedDeparture || '',
-          actualLDFormatted,
-          ldVar.label,
-          tw.destination.plannedArrival || '',
-          actualOAFormatted,
-          oaVar.label,
-          tw.destination.plannedDeparture || '',
-          actualODFormatted,
-          odVar.label,
-          varianceReason,
-          notes.join(' | '),
-          new Date().toISOString(),
-        ],
-      };
-    });
-
-    // Assemble final rows with week headers inserted
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const allRows: any[][] = [headerRow];
-    let currentWeek = '';
-    const colCount = headerRow.length;
-
-    for (const item of loadRows) {
-      if (item.weekKey !== currentWeek) {
-        currentWeek = item.weekKey;
-        // Insert a week header row — text in first cell, rest empty
-        const weekRow = new Array(colCount).fill('');
-        weekRow[0] = item.weekLabelText;
-        weekHeaderRows.push(allRows.length); // 0-based row index
-        allRows.push(weekRow);
+    // Fallback direct lookups for missing relations
+    for (const load of loads as any[]) {
+      if (!load.fleet_vehicles && load.fleet_vehicle_id) {
+        const { data: v } = await supabase
+          .from('fleet_vehicles')
+          .select('vehicle_id, type')
+          .eq('id', load.fleet_vehicle_id)
+          .maybeSingle();
+        load.fleet_vehicles = v || null;
       }
-      // Track variance cells (adjust for actual row position)
-      const rowIndex = allRows.length; // row index in the sheet
-      item.variances.forEach((v: { diffMin: number | null; isLate: boolean }, vi: number) => {
-        if (v.diffMin !== null && v.diffMin !== 0) {
-          varianceCells.push({
-            row: rowIndex,
-            col: VARIANCE_COL_INDICES[vi],
-            isLate: v.isLate,
-            isEarly: !v.isLate,
-          });
-        }
-      });
-      allRows.push(item.row);
+
+      if (!load.drivers && load.driver_id) {
+        const { data: d } = await supabase
+          .from('drivers')
+          .select('name, contact')
+          .eq('id', load.driver_id)
+          .maybeSingle();
+        load.drivers = d || null;
+      }
     }
 
-    // Authenticate with Google and push data
-    const accessToken = await getGoogleAccessToken();
-    await ensureSheetExists(accessToken, SHEET_NAME);
-    await clearSheet(accessToken, SHEET_NAME);
-    await updateSheet(accessToken, SHEET_NAME, allRows);
+    // Sync to Google Sheets
+    console.log('📊 Syncing to Google Sheets...');
+    const dataRows = (loads as any[]).map(buildRow);
+    const allRows = [HEADER_ROW, ...dataRows];
 
-    // Apply red/green formatting to variance cells + week header styling
-    const sheetId = await getSheetId(accessToken, SHEET_NAME);
-    if (sheetId !== null) {
-      await applyVarianceFormatting(accessToken, sheetId, varianceCells, allRows.length, headerRow.length, weekHeaderRows);
+    const token = await getGoogleAccessToken();
+    await ensureSheetExists(token);
+    await clearSheet(token);
+    await writeRows(token, allRows);
+    await applyFormatting(token, allRows.length);
+
+    console.log(`✅ Synced ${dataRows.length} loads to Google Sheets`);
+
+    // Post each load to receiver
+    console.log('📤 Posting to receiver webhook...');
+    const receiverResults = {
+      success: 0,
+      failed: 0,
+      created: 0,
+      updated: 0,
+      errors: [] as string[]
+    };
+
+    for (const load of loads as any[]) {
+      const result = await postToReceiver(load);
+      if (result.ok) {
+        receiverResults.success++;
+        if (result.created) receiverResults.created++;
+        if (result.updated) receiverResults.updated++;
+      } else {
+        receiverResults.failed++;
+        receiverResults.errors.push(`${load.load_id}: ${result.error}`);
+      }
+
+      // Small delay to avoid overwhelming
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: `Synced ${loadRows.length} loads to Google Sheets`,
-        rowsSynced: loadRows.length,
+    // Return combined results
+    const response = {
+      success: true,
+      message: `Synced ${dataRows.length} loads to Google Sheets and posted to webhook`,
+      sheets: {
+        rowsSynced: dataRows.length,
         spreadsheetId: SPREADSHEET_ID,
         sheetName: SHEET_NAME,
-      }),
+      },
+      webhook: {
+        total: loads.length,
+        success: receiverResults.success,
+        failed: receiverResults.failed,
+        created: receiverResults.created,
+        updated: receiverResults.updated,
+        errors: receiverResults.errors,
+      },
+      timestamp: new Date().toISOString()
+    };
+
+    return new Response(
+      JSON.stringify(response),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
+
   } catch (error) {
-    console.error('Google Sheets sync error:', error);
+    console.error('❌ Fatal error:', error);
+
+    const errorResponse = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      code: (error as any)?.code,
+      details: (error as any)?.details,
+      hint: (error as any)?.hint,
+      timestamp: new Date().toISOString()
+    };
+
     return new Response(
-      JSON.stringify({ error: error.message || 'Unknown error' }),
+      JSON.stringify(errorResponse),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   }

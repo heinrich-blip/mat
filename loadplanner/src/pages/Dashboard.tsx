@@ -1,19 +1,13 @@
-import { KPICard } from "@/components/dashboard/KPICard";
 import { PackagingChart } from "@/components/dashboard/PackagingChart";
 import { WeeklyChart } from "@/components/dashboard/WeeklyChart";
 import { WeeklySummary } from "@/components/dashboard/WeeklySummary";
-import { MainLayout } from "@/components/layout/MainLayout";
-import { CreateLoadDialog } from "@/components/trips/CreateLoadDialog";
+import { CreateLoadDialog } from "@/components/trips/CreateTripDialog";
 import { Button } from "@/components/ui/button";
 import { useLoads } from "@/hooks/useTrips";
 import {
   BarChart3,
-  CheckCircle2,
-  Clock,
-  Package,
   Plus,
   Settings,
-  Truck,
 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -24,45 +18,9 @@ export default function Dashboard() {
 
   const { data: loads = [] } = useLoads();
 
-  // Calculate KPIs
-  const kpis = {
-    totalLoads: loads.length,
-    scheduled: loads.filter((l) => l.status === "scheduled").length,
-    inTransit: loads.filter((l) => l.status === "in-transit").length,
-    delivered: loads.filter((l) => l.status === "delivered").length,
-  };
-
   return (
-    <MainLayout title="Dashboard">
+    <>
       <div className="space-y-6 animate-fade-in">
-        {/* KPI Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <KPICard
-            title="Total Loads"
-            value={kpis.totalLoads}
-            icon={Package}
-            variant="total"
-          />
-          <KPICard
-            title="Scheduled"
-            value={kpis.scheduled}
-            icon={Clock}
-            variant="scheduled"
-          />
-          <KPICard
-            title="In Transit"
-            value={kpis.inTransit}
-            icon={Truck}
-            variant="transit"
-          />
-          <KPICard
-            title="Delivered"
-            value={kpis.delivered}
-            icon={CheckCircle2}
-            variant="delivered"
-          />
-        </div>
-
         {/* Actions Row */}
         <div className="flex flex-col sm:flex-row gap-3 justify-between items-start sm:items-center">
           <div className="flex gap-2">
@@ -101,6 +59,6 @@ export default function Dashboard() {
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
       />
-    </MainLayout>
+    </>
   );
 }

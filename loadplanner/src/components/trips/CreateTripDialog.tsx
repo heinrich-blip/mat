@@ -18,6 +18,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Popover,
   PopoverContent,
@@ -66,10 +67,14 @@ const formSchema = z.object({
     "Vansales/Vendor",
     "Fertilizer",
     "Export",
+    "BV",
+    "CBC",
+    "Packaging",
   ]),
   fleetVehicleId: z.string().optional(),
   driverId: z.string().optional(),
   notes: z.string(),
+  status: z.enum(["pending", "scheduled", "in-transit", "delivered"]).default("pending"),
   // Backload fields
   hasBackload: z.boolean().default(false),
   backloadDestination: z.string().optional(),
@@ -94,9 +99,9 @@ export function CreateLoadDialog({
   open,
   onOpenChange,
 }: CreateLoadDialogProps) {
+  const { data: clients = [] } = useClients();
   const { data: drivers = [] } = useDrivers();
   const { data: fleetVehicles = [] } = useFleetVehicles();
-  const { data: clients = [] } = useClients();
   const createLoad = useCreateLoad();
 
   const form = useForm<FormData>({
@@ -111,6 +116,7 @@ export function CreateLoadDialog({
       destPlannedArrival: "08:00",
       destPlannedDeparture: "11:00",
       notes: "",
+      status: "pending",
       hasBackload: false,
       backloadDestination: "",
       backloadCargoType: undefined,
@@ -211,7 +217,8 @@ export function CreateLoadDialog({
     }
 
     // Determine initial status based on fleet and driver allocation
-    const initialStatus = data.fleetVehicleId && data.driverId ? "scheduled" : "pending";
+    // If both are assigned, set to scheduled, otherwise use the selected status
+    const initialStatus = data.fleetVehicleId && data.driverId ? "scheduled" : data.status;
 
     createLoad.mutate(
       {
@@ -281,7 +288,7 @@ export function CreateLoadDialog({
                       <FormLabel>Client</FormLabel>
                       <Select
                         onValueChange={field.onChange}
-                        value={field.value}
+                        value={field.value || ""}
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -289,6 +296,9 @@ export function CreateLoadDialog({
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
+                          <SelectItem value="__none__">
+                            <span className="text-muted-foreground">No client</span>
+                          </SelectItem>
                           {clients.map((client) => (
                             <SelectItem key={client.id} value={client.id}>
                               {client.name}
@@ -308,7 +318,7 @@ export function CreateLoadDialog({
                       <FormLabel>Load Type</FormLabel>
                       <Select
                         onValueChange={field.onChange}
-                        defaultValue={field.value}
+                        value={field.value || ""}
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -330,6 +340,9 @@ export function CreateLoadDialog({
                           <SelectItem value="Vansales/Vendor">
                             Vansales/Vendor
                           </SelectItem>
+                          <SelectItem value="BV">BV</SelectItem>
+                          <SelectItem value="CBC">CBC</SelectItem>
+                          <SelectItem value="Packaging">Packaging</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -339,7 +352,7 @@ export function CreateLoadDialog({
               </div>
             </div>
 
-            {/* Schedule */}
+            {/* Schedule and Status */}
             <div className="space-y-4">
               <h4 className="text-sm font-semibold text-foreground uppercase tracking-wider">
                 Schedule
@@ -420,6 +433,33 @@ export function CreateLoadDialog({
                   )}
                 />
               </div>
+              <div className="grid grid-cols-1">
+                <FormField
+                  control={form.control}
+                  name="status"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Initial Status</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select status" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="scheduled">Scheduled</SelectItem>
+                          <SelectItem value="in-transit">In Transit</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
             </div>
 
             {/* Origin - Farm */}
@@ -439,7 +479,7 @@ export function CreateLoadDialog({
                       <FormLabel>Select Farm</FormLabel>
                       <Select
                         onValueChange={field.onChange}
-                        value={field.value}
+                        value={field.value || ""}
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -524,7 +564,7 @@ export function CreateLoadDialog({
                       </FormLabel>
                       <Select
                         onValueChange={field.onChange}
-                        value={field.value}
+                        value={field.value || ""}
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -607,8 +647,8 @@ export function CreateLoadDialog({
                     <FormItem>
                       <FormLabel>Vehicle</FormLabel>
                       <Select
-                        onValueChange={field.onChange}
-                        value={field.value}
+                        onValueChange={(val) => field.onChange(val === "__none__" ? "" : val)}
+                        value={field.value || "__none__"}
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -616,6 +656,9 @@ export function CreateLoadDialog({
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
+                          <SelectItem value="__none__">
+                            <span className="text-muted-foreground">No vehicle</span>
+                          </SelectItem>
                           {availableVehicles.map((vehicle) => (
                             <SelectItem key={vehicle.id} value={vehicle.id}>
                               {vehicle.vehicle_id} - {vehicle.type}
@@ -634,8 +677,8 @@ export function CreateLoadDialog({
                     <FormItem>
                       <FormLabel>Driver</FormLabel>
                       <Select
-                        onValueChange={field.onChange}
-                        value={field.value}
+                        onValueChange={(val) => field.onChange(val === "__none__" ? "" : val)}
+                        value={field.value || "__none__"}
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -643,6 +686,9 @@ export function CreateLoadDialog({
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
+                          <SelectItem value="__none__">
+                            <span className="text-muted-foreground">No driver</span>
+                          </SelectItem>
                           {availableDrivers.map((driver) => (
                             <SelectItem key={driver.id} value={driver.id}>
                               {driver.name}
@@ -669,16 +715,22 @@ export function CreateLoadDialog({
                     control={form.control}
                     name="hasBackload"
                     render={({ field }) => (
-                      <FormItem className="flex items-center space-x-2 space-y-0">
-                        <FormControl>
-                          <Checkbox
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                          />
-                        </FormControl>
-                        <FormLabel className="text-sm font-normal cursor-pointer">
-                          Include backload
-                        </FormLabel>
+                      <FormItem>
+                        <div className="flex items-center space-x-2">
+                          <FormControl>
+                            <Checkbox
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                              id="hasBackload"
+                            />
+                          </FormControl>
+                          <Label
+                            htmlFor="hasBackload"
+                            className="text-sm font-normal cursor-pointer"
+                          >
+                            Include backload
+                          </Label>
+                        </div>
                       </FormItem>
                     )}
                   />
@@ -695,7 +747,7 @@ export function CreateLoadDialog({
                           <FormLabel>Backload Destination (Farm)</FormLabel>
                           <Select
                             onValueChange={field.onChange}
-                            value={field.value}
+                            value={field.value || ""}
                           >
                             <FormControl>
                               <SelectTrigger>
@@ -722,7 +774,7 @@ export function CreateLoadDialog({
                           <FormLabel>Cargo Type</FormLabel>
                           <Select
                             onValueChange={field.onChange}
-                            value={field.value}
+                            value={field.value || ""}
                           >
                             <FormControl>
                               <SelectTrigger>
@@ -781,9 +833,7 @@ export function CreateLoadDialog({
                   />
                   {/* Quantity Fields */}
                   <div className="space-y-2">
-                    <FormLabel className="text-sm font-medium">
-                      Backload Quantities
-                    </FormLabel>
+                    <h5 className="text-sm font-medium">Backload Quantities</h5>
                     <div className="grid grid-cols-3 gap-4">
                       <FormField
                         control={form.control}
@@ -804,6 +854,7 @@ export function CreateLoadDialog({
                                 onChange={(e) =>
                                   field.onChange(parseInt(e.target.value) || 0)
                                 }
+                                value={field.value}
                               />
                             </FormControl>
                             <FormMessage />
@@ -829,6 +880,7 @@ export function CreateLoadDialog({
                                 onChange={(e) =>
                                   field.onChange(parseInt(e.target.value) || 0)
                                 }
+                                value={field.value}
                               />
                             </FormControl>
                             <FormMessage />
@@ -854,6 +906,7 @@ export function CreateLoadDialog({
                                 onChange={(e) =>
                                   field.onChange(parseInt(e.target.value) || 0)
                                 }
+                                value={field.value}
                               />
                             </FormControl>
                             <FormMessage />
